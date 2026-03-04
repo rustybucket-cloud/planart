@@ -16,15 +16,23 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - **Zoom controls**: Ctrl+Scroll or dedicated zoom buttons (10% - 500%)
 
 #### Element Types
-- **Image elements**: Paste from clipboard, displays at natural dimensions
+- **Image elements**: Paste from clipboard or upload via file picker, displays at natural dimensions
 - **Text elements**: Click toolbar button to enter placement mode, click canvas to place, double-click to edit content
 
 #### Placement Mode
-- **Click-to-place interaction**: Click a tool button (e.g., Text) to enter placement mode
+- **Click-to-place interaction**: Click a tool button (e.g., Text, Image) to enter placement mode
 - **Visual preview**: Semi-transparent preview follows cursor showing where element will be placed
+  - Text shows placeholder box
+  - Image shows thumbnail of selected image (max 200px preview)
 - **Cursor feedback**: Cursor changes to crosshair while in placement mode
 - **Place on click**: Left-click to place the element at cursor position
 - **Cancel with Escape**: Press Escape to exit placement mode without placing
+
+#### Image Upload
+- **File picker**: Click the Image button in the toolbar to open file picker dialog
+- **Supported formats**: All image formats supported by browser (PNG, JPG, GIF, WebP, etc.)
+- **Click-to-place**: After selecting an image, click on canvas to place it at that position
+- **Natural dimensions**: Images are placed at their original size, centered on click position
 
 #### Tiling Mode ✨
 - **Toggle switch** in left toolbar
@@ -86,7 +94,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 ## Future Enhancements
 
 ### Planned Features
-- [ ] Image upload via file picker
+- [x] Image upload via file picker
 - [ ] Export canvas as image (PNG/JPG/SVG)
 - [ ] Element rotation and resizing
 - [ ] Layer ordering (bring forward, send backward)

@@ -52,12 +52,18 @@ export default function Canvas() {
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [tilingMode, setTilingMode] = useState(false);
-  const [placingObjectType, setPlacingObjectType] = useState<"text" | null>(null);
+  const [placingObjectType, setPlacingObjectType] = useState<"text" | "image" | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    url: string;
+    width: number;
+    height: number;
+  } | null>(null);
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const currentMousePos = useRef({ x: 0, y: 0 });
   const pendingDrag = useRef<{ elementId: string; startX: number; startY: number } | null>(null);
@@ -94,8 +100,30 @@ export default function Canvas() {
 
   // Cancel placement mode
   const cancelPlacement = () => {
+    if (pendingImage) {
+      URL.revokeObjectURL(pendingImage.url);
+    }
     setPlacingObjectType(null);
     setPreviewPos(null);
+    setPendingImage(null);
+  };
+
+  // Handle file selection for image upload
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+
+    img.onload = () => {
+      setPendingImage({ url, width: img.width, height: img.height });
+      setPlacingObjectType("image");
+    };
+
+    // Reset input so same file can be selected again
+    e.target.value = "";
   };
 
   // Keyboard shortcuts for zoom, delete, and cancel
@@ -293,6 +321,19 @@ export default function Canvas() {
           setSelectedElement(newElement.id);
           // Delay to ensure element is rendered before entering edit mode
           setTimeout(() => setEditingElementId(newElement.id), 0);
+        } else if (placingObjectType === "image" && pendingImage) {
+          const newElement: CanvasElement = {
+            id: Date.now().toString(),
+            type: "image",
+            x: canvasPos.x - pendingImage.width / 2,
+            y: canvasPos.y - pendingImage.height / 2,
+            width: pendingImage.width,
+            height: pendingImage.height,
+            content: pendingImage.url,
+          };
+          setElements((prev) => [...prev, newElement]);
+          setSelectedElement(newElement.id);
+          setPendingImage(null);
         }
 
         setPlacingObjectType(null);
@@ -590,10 +631,15 @@ export default function Canvas() {
           </Button>
 
           <Button
+            onClick={() => fileInputRef.current?.click()}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
-            title="Add Image (Ctrl+V to paste)"
+            className={`w-12 h-12 transition-all duration-300 group ${
+              placingObjectType === "image"
+                ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+                : "hover:bg-terracotta/20"
+            }`}
+            title="Add Image (I)"
           >
             <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
           </Button>
@@ -801,7 +847,7 @@ export default function Canvas() {
           ))}
 
           {/* Preview element for placement mode */}
-          {placingObjectType && previewPos && (
+          {placingObjectType === "text" && previewPos && (
             <div
               className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20"
               style={{
@@ -811,20 +857,44 @@ export default function Canvas() {
                 height: 60,
               }}
             >
-              {placingObjectType === "text" && (
-                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
-                  <p
-                    className="text-center text-text-secondary"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                  >
-                    Text
-                  </p>
-                </div>
-              )}
+              <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+                <p
+                  className="text-center text-text-secondary"
+                  style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                >
+                  Text
+                </p>
+              </div>
+            </div>
+          )}
+          {placingObjectType === "image" && previewPos && pendingImage && (
+            <div
+              className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20 rounded-lg overflow-hidden"
+              style={{
+                left: previewPos.x - Math.min(pendingImage.width, 200) / 2,
+                top: previewPos.y - Math.min(pendingImage.height, 200) / 2,
+                width: Math.min(pendingImage.width, 200),
+                height: Math.min(pendingImage.height, 200),
+              }}
+            >
+              <img
+                src={pendingImage.url}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
             </div>
           )}
         </div>
       </div>
+
+      {/* Hidden file input for image upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </div>
   );
 }

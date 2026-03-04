@@ -296,6 +296,97 @@ describe('Canvas Page', () => {
     })
   })
 
+  describe('Image Upload and Placement', () => {
+    it('should trigger file input when clicking image button', async () => {
+      const user = userEvent.setup()
+      renderCanvas()
+
+      // Get the hidden file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const clickSpy = vi.spyOn(fileInput, 'click')
+
+      const imageButton = screen.getByTitle('Add Image (I)')
+      await user.click(imageButton)
+
+      expect(clickSpy).toHaveBeenCalled()
+      clickSpy.mockRestore()
+    })
+
+    it('should enter image placement mode after file selection', async () => {
+      renderCanvas()
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+
+      // Create a mock file
+      const file = new File(['dummy'], 'test.png', { type: 'image/png' })
+
+      // Mock Image loading
+      const originalImage = globalThis.Image
+      globalThis.Image = class MockImage {
+        width = 100
+        height = 100
+        onload: (() => void) | null = null
+        set src(_: string) {
+          // Trigger onload asynchronously
+          setTimeout(() => this.onload?.(), 0)
+        }
+      } as unknown as typeof Image
+
+      // Simulate file selection
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [file] } })
+        // Wait for setTimeout in mock Image
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      // Should be in placement mode - canvas should have crosshair cursor
+      const canvas = getCanvasArea()
+      expect(canvas?.className).toContain('cursor-crosshair')
+
+      // Image button should show active state
+      const imageButton = screen.getByTitle('Add Image (I)')
+      expect(imageButton.className).toContain('ring-2')
+
+      globalThis.Image = originalImage
+    })
+
+    it('should exit image placement mode when pressing Escape', async () => {
+      const user = userEvent.setup()
+      renderCanvas()
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['dummy'], 'test.png', { type: 'image/png' })
+
+      const originalImage = globalThis.Image
+      globalThis.Image = class MockImage {
+        width = 100
+        height = 100
+        onload: (() => void) | null = null
+        set src(_: string) {
+          setTimeout(() => this.onload?.(), 0)
+        }
+      } as unknown as typeof Image
+
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [file] } })
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      // Verify we're in placement mode
+      let canvas = getCanvasArea()
+      expect(canvas?.className).toContain('cursor-crosshair')
+
+      // Press Escape
+      await user.keyboard('{Escape}')
+
+      // Should exit placement mode
+      canvas = getCanvasArea()
+      expect(canvas?.className).toContain('cursor-move')
+
+      globalThis.Image = originalImage
+    })
+  })
+
   describe('Context Menu', () => {
     it('should delete element via context menu', async () => {
       const user = userEvent.setup()
