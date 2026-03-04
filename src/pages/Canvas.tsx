@@ -45,11 +45,16 @@ export default function Canvas() {
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [tilingMode, setTilingMode] = useState(false);
+  const [placingObjectType, setPlacingObjectType] = useState<"text" | null>(null);
+  const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const currentMousePos = useRef({ x: 0, y: 0 });
+  const pendingDrag = useRef<{ elementId: string; startX: number; startY: number } | null>(null);
+  const DRAG_THRESHOLD = 5; // pixels before drag starts
 
   // Zoom controls
   const zoomIn = () => {
@@ -72,7 +77,13 @@ export default function Canvas() {
     }
   };
 
-  // Keyboard shortcuts for zoom and delete
+  // Cancel placement mode
+  const cancelPlacement = () => {
+    setPlacingObjectType(null);
+    setPreviewPos(null);
+  };
+
+  // Keyboard shortcuts for zoom, delete, and cancel
   useKeyboardShortcuts({
     shortcuts: [
       { key: '+', callback: zoomIn, description: 'Zoom in' },
@@ -81,6 +92,7 @@ export default function Canvas() {
       { key: '0', callback: resetZoom, description: 'Reset zoom' },
       { key: 'Delete', callback: deleteSelected, description: 'Delete selected element' },
       { key: 'Backspace', callback: deleteSelected, description: 'Delete selected element' },
+      { key: 'Escape', callback: cancelPlacement, description: 'Cancel placement' },
     ],
   });
 
@@ -244,8 +256,36 @@ export default function Canvas() {
     [viewport.zoom]
   );
 
-  // Handle panning
+  // Handle panning and placement
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Handle placement mode click
+    if (placingObjectType && e.button === 0 && !e.shiftKey) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+
+        if (placingObjectType === "text") {
+          const newElement: CanvasElement = {
+            id: Date.now().toString(),
+            type: "text",
+            x: canvasPos.x - 100,
+            y: canvasPos.y - 30,
+            width: 200,
+            height: 60,
+            content: "",
+          };
+          setElements((prev) => [...prev, newElement]);
+          setSelectedElement(newElement.id);
+          // Delay to ensure element is rendered before entering edit mode
+          setTimeout(() => setEditingElementId(newElement.id), 0);
+        }
+
+        setPlacingObjectType(null);
+        setPreviewPos(null);
+      }
+      return;
+    }
+
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       // Middle mouse or Shift+Left mouse for panning
       setIsPanning(true);
@@ -255,6 +295,18 @@ export default function Canvas() {
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
+      // Check if pending drag should become actual drag
+      if (pendingDrag.current && !draggedElement) {
+        const dx = e.clientX - pendingDrag.current.startX;
+        const dy = e.clientY - pendingDrag.current.startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= DRAG_THRESHOLD) {
+          setDraggedElement(pendingDrag.current.elementId);
+          lastMousePos.current = { x: e.clientX, y: e.clientY };
+        }
+      }
+
       if (isPanning) {
         const dx = e.clientX - lastMousePos.current.x;
         const dy = e.clientY - lastMousePos.current.y;
@@ -277,13 +329,23 @@ export default function Canvas() {
         );
         lastMousePos.current = { x: e.clientX, y: e.clientY };
       }
+
+      // Update preview position when in placement mode
+      if (placingObjectType) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+          setPreviewPos(canvasPos);
+        }
+      }
     },
-    [isPanning, draggedElement, viewport.zoom]
+    [isPanning, draggedElement, viewport.zoom, placingObjectType, screenToCanvas]
   );
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
     setDraggedElement(null);
+    pendingDrag.current = null;
   }, []);
 
   // Handle paste from clipboard
@@ -382,48 +444,37 @@ export default function Canvas() {
     [screenToCanvas, tilingMode, selectedElement, elements, calculateAdjacentPosition]
   );
 
-  // Add text element
-  const addTextElement = () => {
-    const canvasPos = screenToCanvas(
-      window.innerWidth / 2,
-      window.innerHeight / 2
-    );
-
-    const newElement: CanvasElement = {
-      id: Date.now().toString(),
-      type: "text",
-      x: canvasPos.x,
-      y: canvasPos.y,
-      width: 200,
-      height: 60,
-      content: "Double-click to edit",
-    };
-    setElements((prev) => [...prev, newElement]);
-  };
-
-  // Handle element drag start
+  // Handle element drag start - uses threshold to allow double-clicks
   const handleElementMouseDown = (e: React.MouseEvent, elementId: string) => {
     if (e.button === 0 && !e.shiftKey) {
       e.stopPropagation();
-      setDraggedElement(elementId);
+      // Don't start drag immediately - wait for mouse to move past threshold
+      pendingDrag.current = { elementId, startX: e.clientX, startY: e.clientY };
       setSelectedElement(elementId);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     }
   };
 
-  // Handle text editing
-  const handleTextDoubleClick = (elementId: string) => {
-    const element = elements.find((el) => el.id === elementId);
-    if (element && element.type === "text") {
-      const newText = prompt("Edit text:", element.content);
-      if (newText !== null) {
-        setElements((prev) =>
-          prev.map((el) =>
-            el.id === elementId ? { ...el, content: newText } : el
-          )
-        );
-      }
+  // Handle text editing - enter inline edit mode
+  const handleTextDoubleClick = (element: CanvasElement) => {
+    if (element.type === "text") {
+      setEditingElementId(element.id);
     }
+  };
+
+  // Save text edit
+  const handleTextEditSave = (elementId: string, newContent: string) => {
+    setElements((prev) =>
+      prev.map((el) =>
+        el.id === elementId ? { ...el, content: newContent || "Double-click to edit" } : el
+      )
+    );
+    setEditingElementId(null);
+  };
+
+  // Cancel text edit
+  const handleTextEditCancel = () => {
+    setEditingElementId(null);
   };
 
   // Effects
@@ -510,10 +561,14 @@ export default function Canvas() {
       <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
         <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
           <Button
-            onClick={addTextElement}
+            onClick={() => setPlacingObjectType(placingObjectType === "text" ? null : "text")}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
+            className={`w-12 h-12 transition-all duration-300 group ${
+              placingObjectType === "text"
+                ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+                : "hover:bg-terracotta/20"
+            }`}
             title="Add Text (T)"
           >
             <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -639,7 +694,9 @@ export default function Canvas() {
       {/* Canvas Area */}
       <div
         ref={canvasRef}
-        className="fixed inset-0 top-[73px] cursor-move select-none"
+        className={`fixed inset-0 top-[73px] select-none ${
+          placingObjectType ? "cursor-crosshair" : "cursor-move"
+        }`}
         style={{
           backgroundImage: `
             radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
@@ -673,7 +730,7 @@ export default function Canvas() {
                 transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
               }}
               onMouseDown={(e) => handleElementMouseDown(e, element.id)}
-              onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element.id)}
+              onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
             >
               {element.type === "image" ? (
                 <img
@@ -682,6 +739,26 @@ export default function Canvas() {
                   className="w-full h-full object-cover rounded-lg"
                   draggable={false}
                 />
+              ) : editingElementId === element.id ? (
+                <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
+                  <textarea
+                    autoFocus
+                    defaultValue={element.content === "Double-click to edit" ? "" : element.content}
+                    className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                    onBlur={(e) => handleTextEditSave(element.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleTextEditSave(element.id, e.currentTarget.value);
+                      } else if (e.key === "Escape") {
+                        handleTextEditCancel();
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  />
+                </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
                   <p
@@ -694,6 +771,30 @@ export default function Canvas() {
               )}
             </div>
           ))}
+
+          {/* Preview element for placement mode */}
+          {placingObjectType && previewPos && (
+            <div
+              className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20"
+              style={{
+                left: previewPos.x - 100,
+                top: previewPos.y - 30,
+                width: 200,
+                height: 60,
+              }}
+            >
+              {placingObjectType === "text" && (
+                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+                  <p
+                    className="text-center text-text-secondary"
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                  >
+                    Text
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

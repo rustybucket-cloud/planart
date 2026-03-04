@@ -17,7 +17,14 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 
 #### Element Types
 - **Image elements**: Paste from clipboard, displays at natural dimensions
-- **Text elements**: Add via toolbar, double-click to edit content
+- **Text elements**: Click toolbar button to enter placement mode, click canvas to place, double-click to edit content
+
+#### Placement Mode
+- **Click-to-place interaction**: Click a tool button (e.g., Text) to enter placement mode
+- **Visual preview**: Semi-transparent preview follows cursor showing where element will be placed
+- **Cursor feedback**: Cursor changes to crosshair while in placement mode
+- **Place on click**: Left-click to place the element at cursor position
+- **Cancel with Escape**: Press Escape to exit placement mode without placing
 
 #### Tiling Mode ✨
 - **Toggle switch** in left toolbar
@@ -51,10 +58,11 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - `+` / `=` - Zoom in
 - `-` - Zoom out
 - `0` - Reset zoom to 100%
+- `Escape` - Cancel placement mode
 - `Shift+Click+Drag` - Pan canvas
 - `Click+Drag` on element - Move element
 - `Double-Click` on text - Edit text content
-- `Del` - Delete selected element (via toolbar button)
+- `Del` / `Backspace` - Delete selected element
 
 ### Technical Details
 
