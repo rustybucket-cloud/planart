@@ -65,13 +65,15 @@ export default function Canvas() {
     setViewport({ x: 0, y: 0, zoom: 1 });
   };
 
-  // Keyboard shortcuts for zoom
+  // Keyboard shortcuts for zoom and delete
   useKeyboardShortcuts({
     shortcuts: [
       { key: '+', callback: zoomIn, description: 'Zoom in' },
       { key: '=', callback: zoomIn, description: 'Zoom in' },
       { key: '-', callback: zoomOut, description: 'Zoom out' },
       { key: '0', callback: resetZoom, description: 'Reset zoom' },
+      { key: 'Delete', callback: deleteSelected, description: 'Delete selected element' },
+      { key: 'Backspace', callback: deleteSelected, description: 'Delete selected element' },
     ],
   });
 
