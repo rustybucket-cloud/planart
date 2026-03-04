@@ -65,6 +65,14 @@ export default function Canvas() {
     setViewport({ x: 0, y: 0, zoom: 1 });
   };
 
+  // Delete selected element
+  const deleteSelected = () => {
+    if (selectedElement) {
+      setElements((prev) => prev.filter((el) => el.id !== selectedElement));
+      setSelectedElement(null);
+    }
+  };
+
   // Keyboard shortcuts for zoom and delete
   useKeyboardShortcuts({
     shortcuts: [
@@ -392,14 +400,6 @@ export default function Canvas() {
       content: "Double-click to edit",
     };
     setElements((prev) => [...prev, newElement]);
-  };
-
-  // Delete selected element
-  const deleteSelected = () => {
-    if (selectedElement) {
-      setElements((prev) => prev.filter((el) => el.id !== selectedElement));
-      setSelectedElement(null);
-    }
   };
 
   // Handle element drag start
