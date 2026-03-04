@@ -4,6 +4,7 @@ export interface KeyboardShortcut {
   key: string;
   callback: () => void;
   description?: string;
+  ctrlOrMeta?: boolean;
 }
 
 interface UseKeyboardShortcutsOptions {
@@ -50,7 +51,12 @@ export function useKeyboardShortcuts({
       }
 
       // Find matching shortcut
-      const shortcut = shortcuts.find((s) => s.key === e.key);
+      const shortcut = shortcuts.find((s) => {
+        if (s.key !== e.key) return false;
+        if (s.ctrlOrMeta && !(e.ctrlKey || e.metaKey)) return false;
+        if (!s.ctrlOrMeta && (e.ctrlKey || e.metaKey)) return false;
+        return true;
+      });
       if (shortcut) {
         e.preventDefault();
         shortcut.callback();

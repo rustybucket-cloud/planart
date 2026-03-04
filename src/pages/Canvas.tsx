@@ -41,6 +41,9 @@ interface ViewportState {
   zoom: number;
 }
 
+// Configuration
+const MAX_UNDO_HISTORY = 5;
+
 // Helper function to check if two rectangles overlap
 const rectanglesOverlap = (
   x1: number,
@@ -161,6 +164,7 @@ export default function Canvas() {
 
   // Canvas state
   const [elements, setElements] = useState<CanvasElement[]>([]);
+  const [history, setHistory] = useState<CanvasElement[][]>([]);
   const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
@@ -223,9 +227,23 @@ export default function Canvas() {
     setViewport({ x: 0, y: 0, zoom: 1 });
   };
 
+  // History tracking for undo
+  const pushHistory = () => {
+    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+  };
+
+  const undo = () => {
+    if (history.length === 0) return;
+    const previous = history[history.length - 1];
+    setHistory((prev) => prev.slice(0, -1));
+    setElements(previous);
+    setSelectedElement(null);
+  };
+
   // Delete selected element
   const deleteSelected = () => {
     if (selectedElement) {
+      pushHistory();
       setElements((prev) => prev.filter((el) => el.id !== selectedElement));
       setSelectedElement(null);
     }
@@ -233,6 +251,7 @@ export default function Canvas() {
 
   // Delete a specific element by ID
   const deleteElement = (elementId: string) => {
+    pushHistory();
     setElements((prev) => prev.filter((el) => el.id !== elementId));
     if (selectedElement === elementId) {
       setSelectedElement(null);
@@ -261,6 +280,7 @@ export default function Canvas() {
     const element = elements.find((el) => el.id === elementId);
     if (!element) return;
 
+    pushHistory();
     pendingResize.current = {
       elementId,
       corner,
@@ -304,6 +324,7 @@ export default function Canvas() {
       { key: 'Delete', callback: deleteSelected, description: 'Delete selected element' },
       { key: 'Backspace', callback: deleteSelected, description: 'Delete selected element' },
       { key: 'Escape', callback: cancelPlacement, description: 'Cancel placement' },
+      { key: 'z', ctrlOrMeta: true, callback: undo, description: 'Undo' },
     ],
   });
 
@@ -348,6 +369,7 @@ export default function Canvas() {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
         const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+        pushHistory();
 
         if (placingObjectType === "text") {
           const newElement: CanvasElement = {
@@ -397,6 +419,7 @@ export default function Canvas() {
     if (e.button === 0 && !e.shiftKey) {
       e.stopPropagation();
       // Don't start drag immediately - wait for mouse to move past threshold
+      pushHistory();
       pendingDrag.current = { elementId, startX: e.clientX, startY: e.clientY };
       setSelectedElement(elementId);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -412,6 +435,7 @@ export default function Canvas() {
 
   // Save text edit
   const handleTextEditSave = (elementId: string, newContent: string) => {
+    pushHistory();
     setElements((prev) =>
       prev.map((el) =>
         el.id === elementId ? { ...el, content: newContent || "Double-click to edit" } : el
@@ -586,6 +610,9 @@ export default function Canvas() {
           img.src = url;
 
           img.onload = () => {
+            // Push history before adding new element
+            setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), stateRef.current.elements]);
+
             if (tilingMode) {
               const selectedEl = selectedElement ? elements.find((el) => el.id === selectedElement) : null;
 

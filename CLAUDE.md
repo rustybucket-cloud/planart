@@ -14,3 +14,9 @@
 - Use Shadcn for UI components. If a Shadcn component is not installed, use the cli to install it.
     - Example: `npx shadcn@latest add button`
 - Features and techinical documentation is stored in /docs
+
+### Code Style
+
+- Don't store derived state in a `useState`
+- Components should be small and self-contained
+- When possible, functions should be pure functions outside of react components.

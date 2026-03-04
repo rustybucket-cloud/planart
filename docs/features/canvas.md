@@ -68,6 +68,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - **Typography**: Crimson Pro serif for elegance, monospace for technical data
 
 ### Keyboard Shortcuts
+- `Ctrl/Cmd+Z` - Undo last action (up to 5 actions)
 - `Ctrl+V` - Paste images from clipboard
 - `Scroll` / `Mouse Wheel` - Zoom in/out (toward cursor position)
 - `+` / `=` - Zoom in
@@ -109,7 +110,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - [ ] Element rotation
 - [ ] Layer ordering (bring forward, send backward)
 - [ ] Multi-select with marquee tool
-- [ ] Undo/redo system
+- [x] Undo system (Ctrl/Cmd+Z, up to 5 actions)
 - [ ] Canvas persistence (save to database)
 - [x] Keyboard shortcuts for zoom (+/-, 0 to reset)
 - [ ] Keyboard shortcuts for delete (Del key)

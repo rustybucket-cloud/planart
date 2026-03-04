@@ -67,4 +67,34 @@ describe('useKeyboardShortcuts', () => {
     await userEvent.keyboard('+')
     expect(callback).not.toHaveBeenCalled()
   })
+
+  it('should trigger callback when ctrlOrMeta shortcut is pressed with Ctrl', async () => {
+    const callback = vi.fn()
+    const shortcuts = [{ key: 'z', ctrlOrMeta: true, callback }]
+
+    renderHook(() => useKeyboardShortcuts({ shortcuts }))
+
+    await userEvent.keyboard('{Control>}z{/Control}')
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it('should not trigger ctrlOrMeta shortcut without modifier', async () => {
+    const callback = vi.fn()
+    const shortcuts = [{ key: 'z', ctrlOrMeta: true, callback }]
+
+    renderHook(() => useKeyboardShortcuts({ shortcuts }))
+
+    await userEvent.keyboard('z')
+    expect(callback).not.toHaveBeenCalled()
+  })
+
+  it('should not trigger regular shortcut when modifier is pressed', async () => {
+    const callback = vi.fn()
+    const shortcuts = [{ key: 'z', callback }]
+
+    renderHook(() => useKeyboardShortcuts({ shortcuts }))
+
+    await userEvent.keyboard('{Control>}z{/Control}')
+    expect(callback).not.toHaveBeenCalled()
+  })
 })
