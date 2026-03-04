@@ -295,4 +295,48 @@ describe('Canvas Page', () => {
       expect(zoomDisplay).toHaveTextContent('100%')
     })
   })
+
+  describe('Context Menu', () => {
+    it('should delete element via context menu', async () => {
+      const user = userEvent.setup()
+      renderCanvas()
+
+      // Place a text element
+      const textButton = screen.getByTitle('Add Text (T)')
+      await user.click(textButton)
+
+      const canvas = getCanvasArea()
+
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 500, clientY: 400, button: 0 })
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      // Save with some text
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'Delete Me{Enter}')
+
+      // Wait for text to appear
+      await waitFor(() => {
+        expect(screen.getByText('Delete Me')).toBeInTheDocument()
+      })
+
+      // Right-click on the element to open context menu
+      const textElement = screen.getByText('Delete Me')
+      await user.pointer({ keys: '[MouseRight]', target: textElement })
+
+      // Wait for context menu to appear and click delete
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /delete/i })).toBeInTheDocument()
+      })
+
+      const deleteMenuItem = screen.getByRole('menuitem', { name: /delete/i })
+      await user.click(deleteMenuItem)
+
+      // Element should be removed
+      await waitFor(() => {
+        expect(screen.queryByText('Delete Me')).not.toBeInTheDocument()
+      })
+    })
+  })
 })

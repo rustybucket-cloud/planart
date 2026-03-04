@@ -63,6 +63,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - `Click+Drag` on element - Move element
 - `Double-Click` on text - Edit text content
 - `Del` / `Backspace` - Delete selected element
+- `Right-click` on element - Open context menu
 
 ### Technical Details
 
@@ -94,7 +95,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - [ ] Canvas persistence (save to database)
 - [x] Keyboard shortcuts for zoom (+/-, 0 to reset)
 - [ ] Keyboard shortcuts for delete (Del key)
-- [ ] Context menu for element actions
+- [x] Context menu for element actions (delete)
 - [ ] Grid snap mode
 - [ ] Canvas background color picker
 - [ ] Element opacity controls

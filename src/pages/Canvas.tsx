@@ -16,6 +16,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuShortcut,
+} from "@/components/ui/context-menu";
 
 interface CanvasElement {
   id: string;
@@ -73,6 +80,14 @@ export default function Canvas() {
   const deleteSelected = () => {
     if (selectedElement) {
       setElements((prev) => prev.filter((el) => el.id !== selectedElement));
+      setSelectedElement(null);
+    }
+  };
+
+  // Delete a specific element by ID
+  const deleteElement = (elementId: string) => {
+    setElements((prev) => prev.filter((el) => el.id !== elementId));
+    if (selectedElement === elementId) {
       setSelectedElement(null);
     }
   };
@@ -715,61 +730,74 @@ export default function Canvas() {
           }}
         >
           {elements.map((element) => (
-            <div
-              key={element.id}
-              className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-                selectedElement === element.id
-                  ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
-                  : "hover:ring-2 hover:ring-terracotta/50"
-              }`}
-              style={{
-                left: element.x,
-                top: element.y,
-                width: element.width,
-                height: element.height,
-                transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
-              }}
-              onMouseDown={(e) => handleElementMouseDown(e, element.id)}
-              onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
-            >
-              {element.type === "image" ? (
-                <img
-                  src={element.content}
-                  alt="Canvas element"
-                  className="w-full h-full object-cover rounded-lg"
-                  draggable={false}
-                />
-              ) : editingElementId === element.id ? (
-                <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
-                  <textarea
-                    autoFocus
-                    defaultValue={element.content === "Double-click to edit" ? "" : element.content}
-                    className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                    onBlur={(e) => handleTextEditSave(element.id, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleTextEditSave(element.id, e.currentTarget.value);
-                      } else if (e.key === "Escape") {
-                        handleTextEditCancel();
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  />
+            <ContextMenu key={element.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
+                    selectedElement === element.id
+                      ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
+                      : "hover:ring-2 hover:ring-terracotta/50"
+                  }`}
+                  style={{
+                    left: element.x,
+                    top: element.y,
+                    width: element.width,
+                    height: element.height,
+                    transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+                  }}
+                  onMouseDown={(e) => handleElementMouseDown(e, element.id)}
+                  onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
+                >
+                  {element.type === "image" ? (
+                    <img
+                      src={element.content}
+                      alt="Canvas element"
+                      className="w-full h-full object-cover rounded-lg"
+                      draggable={false}
+                    />
+                  ) : editingElementId === element.id ? (
+                    <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
+                      <textarea
+                        autoFocus
+                        defaultValue={element.content === "Double-click to edit" ? "" : element.content}
+                        className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
+                        style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                        onBlur={(e) => handleTextEditSave(element.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleTextEditSave(element.id, e.currentTarget.value);
+                          } else if (e.key === "Escape") {
+                            handleTextEditCancel();
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+                      <p
+                        className="text-center break-words"
+                        style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                      >
+                        {element.content}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
-                  <p
-                    className="text-center break-words"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                  >
-                    {element.content}
-                  </p>
-                </div>
-              )}
-            </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
+                <ContextMenuItem
+                  variant="destructive"
+                  onClick={() => deleteElement(element.id)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                  <ContextMenuShortcut>Del</ContextMenuShortcut>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
 
           {/* Preview element for placement mode */}
