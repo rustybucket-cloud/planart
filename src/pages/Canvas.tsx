@@ -13,6 +13,8 @@ import {
   ZoomIn,
   ZoomOut,
   Move,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -814,14 +816,25 @@ export default function Canvas() {
           <div className="h-px bg-terracotta/20 my-2" />
 
           <Button
-            onClick={deleteSelected}
-            disabled={!selectedElement}
+            onClick={undo}
+            disabled={history.length === 0}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-red-500/20 text-red-400 disabled:opacity-30 transition-all duration-300 group"
-            title="Delete (Del)"
+            className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+            title="Undo (Ctrl+Z)"
           >
-            <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+            <Undo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+          </Button>
+
+          <Button
+            onClick={redo}
+            disabled={redoHistory.length === 0}
+            variant="ghost"
+            size="icon"
+            className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+            title="Redo (Ctrl+Y)"
+          >
+            <Redo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
           </Button>
         </div>
       </div>
