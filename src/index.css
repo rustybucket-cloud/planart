@@ -47,6 +47,28 @@
 
 :root {
     --radius: 0.625rem;
+
+    /* PlanArt Brand Colors */
+    --coral: #FF6B5A;
+    --teal: #2DD4BF;
+    --sunset-orange: #FB923C;
+
+    /* Backgrounds */
+    --deep-black: #0A0A0A;
+    --charcoal: #1A1A1A;
+    --soft-black: #2A2A2A;
+
+    /* Text */
+    --text-primary: #FFFFFF;
+    --text-secondary: #A3A3A3;
+    --text-tertiary: #737373;
+
+    /* State Colors */
+    --success: #10B981;
+    --warning: #FBBF24;
+    --error: #EF4444;
+
+    /* Shadcn compatibility */
     --background: oklch(1 0 0);
     --foreground: oklch(0.141 0.005 285.823);
     --card: oklch(1 0 0);

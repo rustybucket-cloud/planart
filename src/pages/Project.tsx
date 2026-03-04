@@ -7,7 +7,7 @@ const mockCanvases = [
   { id: 1, name: "Hero Section v3", lastModified: "1 hour ago", thumbnail: "gradient-1" },
   { id: 2, name: "Mobile App Flow", lastModified: "3 hours ago", thumbnail: "gradient-2" },
   { id: 3, name: "Dashboard Layout", lastModified: "5 hours ago", thumbnail: "gradient-3" },
-  { id: 4, name: "Landing Page", lastModified: "Yesterday", thumbnail: "gradient-4" },
+  { id: 4, name: "Landing Page", lastModified: "Yesterday", thumbnail: "gradient-5" },
 ];
 
 type ViewMode = "grid" | "list";
@@ -28,7 +28,7 @@ export default function Project() {
       />
 
       {/* Background elements */}
-      <div className="fixed top-20 right-[-10%] w-96 h-96 bg-purple-500/10 rounded-full blur-[120px]" />
+      <div className="fixed top-20 right-[-10%] w-96 h-96 bg-[#FF6B5A]/10 rounded-full blur-[120px]" />
 
       <div className="relative z-10 max-w-[1800px] mx-auto px-8 py-12">
         {/* Header */}
@@ -58,7 +58,7 @@ export default function Project() {
               <button className="p-3 rounded-lg hover:bg-red-500/20 text-red-500 transition-colors">
                 <Trash2 className="w-6 h-6" strokeWidth={2.5} />
               </button>
-              <button className="group relative px-6 py-3 bg-orange-500 text-black font-bold rounded-xl hover:bg-orange-400 transition-all duration-300 hover:scale-105 active:scale-95">
+              <button className="group relative px-6 py-3 bg-gradient-to-r from-[#FF6B5A] to-[#FB923C] text-white font-bold rounded-xl hover:shadow-[0_0_30px_rgba(255,107,90,0.4)] transition-all duration-300 hover:scale-105 active:scale-95">
                 <span className="flex items-center gap-2">
                   <Plus className="w-5 h-5" strokeWidth={3} />
                   New Canvas
@@ -74,7 +74,7 @@ export default function Project() {
                 onClick={() => setViewMode("grid")}
                 className={`p-3 rounded-lg transition-all duration-300 ${
                   viewMode === "grid"
-                    ? "bg-orange-500 text-black shadow-lg"
+                    ? "bg-[#FF6B5A] text-white shadow-lg"
                     : "text-gray-400 hover:text-white hover:bg-white/10"
                 }`}
               >
@@ -84,7 +84,7 @@ export default function Project() {
                 onClick={() => setViewMode("list")}
                 className={`p-3 rounded-lg transition-all duration-300 ${
                   viewMode === "list"
-                    ? "bg-orange-500 text-black shadow-lg"
+                    ? "bg-[#FF6B5A] text-white shadow-lg"
                     : "text-gray-400 hover:text-white hover:bg-white/10"
                 }`}
               >
@@ -101,20 +101,20 @@ export default function Project() {
               <div
                 key={canvas.id}
                 onClick={() => navigate(`/canvas/${canvas.id}`)}
-                className="group relative bg-gradient-to-br from-white/5 to-white/[0.02] border-2 border-white/10 rounded-2xl overflow-hidden hover:border-orange-500/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(249,115,22,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
+                className="group relative bg-gradient-to-br from-white/5 to-white/[0.02] border-2 border-white/10 rounded-2xl overflow-hidden hover:border-[#FF6B5A]/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(255,107,90,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
                 style={{ animationDelay: `${index * 80}ms` }}
               >
                 <div className={`aspect-video bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} relative overflow-hidden`}>
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="w-16 h-16 rounded-full bg-orange-500 flex items-center justify-center shadow-lg">
+                    <div className="w-16 h-16 rounded-full bg-[#FF6B5A] flex items-center justify-center shadow-lg">
                       <span className="text-2xl">✏️</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-5">
-                  <h3 className="text-lg font-bold mb-1 group-hover:text-orange-500 transition-colors truncate">
+                  <h3 className="text-lg font-bold mb-1 group-hover:text-[#FF6B5A] transition-colors truncate">
                     {canvas.name}
                   </h3>
                   <p className="text-xs text-gray-600 font-medium">
@@ -130,12 +130,12 @@ export default function Project() {
               <div
                 key={canvas.id}
                 onClick={() => navigate(`/canvas/${canvas.id}`)}
-                className="group flex items-center gap-4 bg-gradient-to-r from-white/5 to-white/[0.02] border-2 border-white/10 rounded-xl p-4 hover:border-orange-500/50 transition-all duration-300 hover:bg-white/10 cursor-pointer animate-in fade-in slide-in-from-left-4"
+                className="group flex items-center gap-4 bg-gradient-to-r from-white/5 to-white/[0.02] border-2 border-white/10 rounded-xl p-4 hover:border-[#FF6B5A]/50 transition-all duration-300 hover:bg-white/10 cursor-pointer animate-in fade-in slide-in-from-left-4"
                 style={{ animationDelay: `${index * 60}ms` }}
               >
                 <div className={`w-20 h-14 rounded-lg bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} flex-shrink-0`} />
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold truncate group-hover:text-orange-500 transition-colors">
+                  <h3 className="font-bold truncate group-hover:text-[#FF6B5A] transition-colors">
                     {canvas.name}
                   </h3>
                 </div>
@@ -153,10 +153,11 @@ export default function Project() {
 
 function getThumbnailGradient(thumbnail: string): string {
   const gradients: Record<string, string> = {
-    "gradient-1": "from-orange-500 via-pink-500 to-purple-600",
-    "gradient-2": "from-cyan-500 via-blue-500 to-indigo-600",
-    "gradient-3": "from-purple-500 via-pink-500 to-rose-600",
-    "gradient-4": "from-emerald-500 via-teal-500 to-cyan-600",
+    "gradient-1": "from-[#FF6B5A] via-[#FB923C] to-[#FBBF24]", // Coral Sunset
+    "gradient-2": "from-[#2DD4BF] via-[#06B6D4] to-[#0284C7]", // Teal Ocean
+    "gradient-3": "from-[#FB923C] via-[#FF6B5A] to-[#EC4899]", // Warm Blend
+    "gradient-4": "from-[#10B981] via-[#2DD4BF] to-[#06B6D4]", // Cool Mint
+    "gradient-5": "from-[#FF6B5A] to-[#2DD4BF]", // Coral Teal
   };
   return gradients[thumbnail] || gradients["gradient-1"];
 }

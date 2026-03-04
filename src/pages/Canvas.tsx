@@ -43,7 +43,7 @@ export default function Canvas() {
       {/* Canvas Area */}
       <main className="flex items-center justify-center p-8 min-h-[calc(100vh-80px)]">
         <div className="text-center">
-          <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-orange-500 to-pink-600 flex items-center justify-center">
+          <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#FF6B5A] to-[#FB923C] flex items-center justify-center">
             <span className="text-4xl font-black">🎨</span>
           </div>
           <h2 className="text-3xl font-black mb-2">Canvas {id}</h2>
