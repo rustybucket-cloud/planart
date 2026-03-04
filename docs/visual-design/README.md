@@ -16,11 +16,11 @@ PlanArt's design system creates a **distinctive, professional, and warm** creati
 ### Aesthetic Direction
 **"Architect's Studio Meets Creative Workshop"**
 
-- **Foundation**: Dark, sophisticated backgrounds (charcoal navy)
-- **Accent**: Warm, grounded colors (terracotta, coral, sunset orange)
+- **Foundation**: Dark, sophisticated blue-gray backgrounds (`#1a1d28`, `#0f1117`)
+- **Accent**: Warm, earthy terracotta palette (`#d4845e`, `#fb923c`)
 - **Typography**: Mix of elegant serif (Crimson Pro) and clean sans (Outfit)
-- **Surfaces**: Glass-morphic floating panels with subtle depth
-- **Motion**: Smooth, purposeful micro-interactions
+- **Surfaces**: Glass-morphic floating panels with subtle depth and backdrop blur
+- **Motion**: Smooth, purposeful micro-interactions (200-400ms)
 
 ---
 
@@ -30,15 +30,16 @@ PlanArt's design system creates a **distinctive, professional, and warm** creati
 **Core colors, gradients, and usage guidelines**
 
 **Quick Reference:**
-- **App Primary**: Coral `#FF6B5A`
-- **Canvas Primary**: Terracotta `#d4845e`
-- **Secondary**: Teal `#2DD4BF`
-- **Backgrounds**: Deep Black `#0A0A0A` → Charcoal `#1A1A1A` → Soft Black `#2A2A2A`
+- **Primary**: Terracotta `#d4845e` (all pages, primary accent)
+- **Secondary**: Warm Orange `#fb923c` (gradients, highlights)
+- **Tertiary**: Golden Earth `#fbbf24` (gradient endpoints, special highlights)
+- **Backgrounds**: Deep Blue-Gray `#1a1d28` → Darker Blue-Gray `#0f1117` (panels/cards)
+- **Text**: White `#FFFFFF` → Muted Gray `#8b8d98` → Dark Gray `#737373`
 
 **When to use:**
-- Coral: Main app navigation, primary actions (Home, Projects)
-- Terracotta: Canvas workspace, creative tools
-- Teal: Secondary actions, informational elements
+- Terracotta: Primary buttons, borders, hover states, selection rings
+- Warm Orange: Gradients (paired with terracotta), secondary accents
+- Golden Earth: Sparingly for gradient endpoints
 
 ### 2. [Typography](./typography.md)
 **Font families, scales, and text styling**
@@ -121,16 +122,19 @@ className="
 **Purpose**: Navigation and project management
 
 **Design**:
-- Coral accent (`#FF6B5A`)
-- Outfit typography
-- Card grids with hover states
-- Generous whitespace
+- Terracotta accent (`#d4845e`) for all interactive elements
+- Outfit typography for body text
+- Card grids with glass-morphic styling
+- Warm, cohesive aesthetic
 
 **Pattern**:
 ```tsx
 <Card className="
-  hover:border-[#FF6B5A]/50
-  hover:shadow-xl
+  bg-[#0f1117]/60
+  backdrop-blur-sm
+  border border-[#d4845e]/20
+  hover:border-[#d4845e]/50
+  hover:shadow-[0_0_40px_rgba(212,132,94,0.15)]
   transition-all duration-300
 ">
 ```
@@ -139,24 +143,25 @@ className="
 **Purpose**: Creative workspace and editing
 
 **Design**:
-- Terracotta accent (`#d4845e`)
-- Crimson Pro for headers
-- Floating toolbars
-- Dot grid background
+- Same terracotta accent (`#d4845e`) for consistency
+- Crimson Pro for canvas headers and creative text elements
+- Floating toolbars with glass-morphism
+- Dot grid background for spatial awareness
 
 **Pattern**:
 ```tsx
-<header style={{ fontFamily: "'Crimson Pro', serif" }}>
+<header style={{ fontFamily: "'Crimson Pro', serif" }} className="text-xl font-bold">
   Canvas 1
 </header>
 
-<Button className="hover:bg-[#d4845e]/20">
+<Button className="hover:bg-[#d4845e]/20 transition-all duration-300">
 ```
 
-**Why different accents?**
-- Creates visual distinction between navigation (coral) and workspace (terracotta)
-- Terracotta feels more grounded and material (architect's clay)
-- Helps users mentally separate "browsing" from "creating"
+**Why unified palette?**
+- Consistent brand identity across all pages
+- Simpler development and maintenance
+- Warm, architect's studio aesthetic applies everywhere
+- Terracotta evokes craftsmanship and materiality throughout the app
 
 ---
 
@@ -191,44 +196,60 @@ import { Button } from "@/components/ui/button";
 ## Design Tokens
 
 ### CSS Variables
-Core design values are defined in `src/index.css`:
+Core design values (can be added to `src/index.css` if needed):
 
 ```css
 :root {
   /* Brand Colors */
-  --coral: #FF6B5A;
-  --teal: #2DD4BF;
-  --sunset-orange: #FB923C;
   --terracotta: #d4845e;
+  --warm-orange: #fb923c;
+  --golden-earth: #fbbf24;
 
   /* Backgrounds */
-  --deep-black: #0A0A0A;
-  --charcoal: #1A1A1A;
-  --soft-black: #2A2A2A;
+  --bg-deep: #1a1d28;
+  --bg-panel: #0f1117;
 
   /* Text */
   --text-primary: #FFFFFF;
-  --text-secondary: #A3A3A3;
+  --text-secondary: #8b8d98;
   --text-tertiary: #737373;
 
   /* Spacing */
-  --radius: 0.625rem; /* 10px base radius */
+  --radius: 0.75rem; /* 12px base radius */
 }
 ```
 
-### Tailwind Configuration
-Custom colors and utilities in `tailwind.config.js`:
-```js
-theme: {
-  extend: {
-    colors: {
-      coral: '#FF6B5A',
-      terracotta: '#d4845e',
-      // ...
-    }
-  }
-}
+### Using CSS Variables with Tailwind
+
+All brand colors are available as CSS variables through Tailwind:
+
+```tsx
+// Brand colors
+className="bg-terracotta"              // #d4845e
+className="bg-warm-orange"             // #fb923c
+className="bg-golden-earth"            // #fbbf24
+
+// With opacity
+className="bg-terracotta/20"           // 20% opacity
+className="border-terracotta/50"       // 50% opacity
+
+// Backgrounds
+className="bg-bg-deep"                 // #1a1d28
+className="bg-bg-panel/60"             // #0f1117 at 60% opacity
+
+// Text
+className="text-text-secondary"        // #8b8d98
+className="text-text-tertiary"         // #737373
+
+// Gradients
+className="bg-gradient-to-r from-terracotta to-warm-orange"
 ```
+
+This approach is **preferred** because:
+- Easy to update colors globally by changing CSS variables
+- Consistent naming across the codebase
+- Better maintainability than hardcoded hex values
+- Auto-completion in IDEs that support Tailwind
 
 ---
 
@@ -363,13 +384,18 @@ PlanArt targets **WCAG 2.1 AA** compliance:
 
 ## Quick Reference Card
 
-### Colors
+### Colors (CSS Variables)
 ```
-Coral:       #FF6B5A  (App primary)
-Terracotta:  #d4845e  (Canvas primary)
-Teal:        #2DD4BF  (Secondary)
-Deep Black:  #0A0A0A  (Background)
+terracotta        → #d4845e  (Primary accent - all pages)
+warm-orange       → #fb923c  (Secondary accent, gradients)
+golden-earth      → #fbbf24  (Gradient highlights)
+bg-deep           → #1a1d28  (Base background)
+bg-panel          → #0f1117  (Elevated surfaces)
+text-secondary    → #8b8d98  (Muted text)
+text-tertiary     → #737373  (De-emphasized text)
 ```
+
+Usage: `bg-terracotta`, `text-text-secondary`, `border-terracotta/20`
 
 ### Typography
 ```
@@ -395,17 +421,25 @@ duration-400  - Smooth entrances
 
 ### Components
 ```
-Glass panel:  bg-[#0f1117]/90 backdrop-blur-xl
-Icon button:  w-11 h-11 (44×44px)
-Border:       border-[#d4845e]/20
+Glass panel:  bg-[#0f1117]/60 backdrop-blur-sm border border-[#d4845e]/20
+Icon button:  w-12 h-12 (48×48px) hover:bg-[#d4845e]/20
+Border:       border-[#d4845e]/20 (default), border-[#d4845e]/50 (hover)
 Shadow:       shadow-2xl shadow-black/40
+Ring:         ring-2 ring-[#d4845e] (selected)
 ```
 
 ---
 
 ## Version History
 
-### v1.0 - Canvas Launch (Current)
+### v1.1 - Unified Palette (Current)
+- **Unified color palette**: Terracotta accent across all pages (Home, Projects, Canvas)
+- **Updated Home.tsx**: Matches Canvas.tsx aesthetics with glass-morphism and warm terracotta
+- **Simplified color system**: Single primary accent instead of context-specific colors
+- **Updated documentation**: Color palette, UI patterns, and README reflect unified approach
+- **Warmer gradients**: All thumbnail and project gradients use earthy terracotta tones
+
+### v1.0 - Canvas Launch
 - Initial design system documentation
 - Canvas page aesthetic (terracotta accent)
 - Typography guidelines (Crimson Pro integration)
@@ -416,8 +450,8 @@ Shadow:       shadow-2xl shadow-black/40
 ### Future
 - Light mode support _(if needed)_
 - Additional component patterns
-- Expanded color palette for features
 - Advanced animation recipes
+- User customizable accent colors
 
 ---
 

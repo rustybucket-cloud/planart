@@ -1,75 +1,76 @@
 # PlanArt Color Palette
 
 ## Philosophy
-The PlanArt color palette is designed to be **energetic yet harmonious** - inspiring creativity without overwhelming the user. We use a warm, coral-centered palette with cool teal accents, creating visual interest through complementary contrast while maintaining cohesion.
+The PlanArt color palette is designed to evoke **warmth, craftsmanship, and creative focus**. We use a sophisticated terracotta-centered palette inspired by natural materials (clay, earth, warm metals) that creates a grounded, architect's studio aesthetic. The warm earthy tones inspire creativity while maintaining professional polish.
 
 ## Core Colors
 
-### Primary: Coral Flame
-- **Hex**: `#FF6B5A`
-- **Usage**: Primary actions, key UI elements, hover states
-- **Psychology**: Energetic, creative, warm but not aggressive
+### Primary: Terracotta Clay
+- **Hex**: `#d4845e`
+- **Usage**: Primary actions, key UI elements, hover states, borders, accents
+- **Psychology**: Warm, creative, grounded, artisanal
+- **Inspiration**: Clay pottery, architect's drafting tools, warm studio lighting
 - **Contrast**: High contrast on dark backgrounds
 
-### Secondary: Deep Teal
-- **Hex**: `#2DD4BF` (Teal 400)
-- **Usage**: Secondary actions, informational elements, accents
-- **Psychology**: Calming, professional, balances the warm coral
-- **Contrast**: Creates complementary harmony with coral
-
-### Accent: Sunset Orange
+### Accent: Warm Orange
 - **Hex**: `#FB923C`
-- **Usage**: Highlights, notifications, special callouts
-- **Psychology**: Playful, attention-grabbing
-- **Contrast**: Analogous to coral, creates smooth transitions
+- **Usage**: Gradients, highlights, secondary accents
+- **Psychology**: Energetic but not aggressive, adds vibrancy
+- **Contrast**: Analogous to terracotta, creates smooth warm transitions
+
+### Tertiary: Golden Earth
+- **Hex**: `#FBBF24`
+- **Usage**: Gradient endpoints, special highlights
+- **Psychology**: Optimistic, valuable, illuminating
+- **Use sparingly**: Adds brightness to warm gradients
 
 ## Neutral Scale
 
 ### Background Hierarchy
-- **Deep Black**: `#0A0A0A` - Base background
-- **Charcoal**: `#1A1A1A` - Elevated surfaces (cards, modals)
-- **Soft Black**: `#2A2A2A` - Interactive surfaces
+- **Deep Blue-Gray**: `#1a1d28` - Base background (primary canvas)
+- **Darker Blue-Gray**: `#0f1117` - Elevated surfaces (panels, cards, toolbars)
+- **Interactive Overlay**: `#0f1117` with 40-90% opacity - Context-dependent transparency
 
 ### Text Hierarchy
 - **Primary Text**: `#FFFFFF` - Headings, important content
-- **Secondary Text**: `#A3A3A3` - Body text, descriptions
-- **Tertiary Text**: `#737373` - Metadata, timestamps
+- **Secondary Text**: `#8b8d98` - Body text, descriptions, UI labels
+- **Tertiary Text**: `#737373` - De-emphasized metadata (rarely used)
 
 ### Borders & Dividers
-- **Subtle Border**: `rgba(255, 255, 255, 0.1)` - Card borders
-- **Medium Border**: `rgba(255, 255, 255, 0.2)` - Active states
-- **Strong Border**: `rgba(255, 255, 255, 0.3)` - Focus states
+- **Subtle Border**: `rgba(212, 132, 94, 0.2)` - Card borders, panel edges
+- **Medium Border**: `rgba(212, 132, 94, 0.5)` - Hover states
+- **Strong Border**: `rgba(212, 132, 94, 1.0)` - Selected/active states
 
 ## Gradient System
 
-### Primary Gradient (Coral to Orange)
+### Primary Gradient (Terracotta to Warm Orange)
 ```css
-background: linear-gradient(135deg, #FF6B5A 0%, #FB923C 100%);
+background: linear-gradient(135deg, #d4845e 0%, #fb923c 100%);
 ```
 Used for: Primary buttons, hero elements, key features
 
-### Secondary Gradient (Teal to Blue)
+### Secondary Gradient (Warm Orange to Terracotta)
 ```css
-background: linear-gradient(135deg, #2DD4BF 0%, #06B6D4 100%);
+background: linear-gradient(135deg, #fb923c 0%, #d4845e 100%);
 ```
-Used for: Secondary features, informational cards
+Used for: Alternative project cards, secondary features
 
 ### Subtle Glow (for atmospheric effects)
 ```css
-background: linear-gradient(135deg, rgba(255, 107, 90, 0.1) 0%, rgba(45, 212, 191, 0.1) 100%);
+background: radial-gradient(circle, rgba(212, 132, 94, 0.1) 0%, transparent 70%);
 ```
-Used for: Background ambiance, decorative elements
+Used for: Background ambiance, decorative blur elements
 
 ## Canvas Thumbnail Gradients
 
-For visual variety in canvas previews, we use 6 curated gradients that stay within our cohesive palette:
+For visual variety in canvas previews, we use 6 curated gradients that stay within our warm, earthy palette:
 
-1. **Coral Sunset**: `#FF6B5A → #FB923C → #FBBF24`
-2. **Teal Ocean**: `#2DD4BF → #06B6D4 → #0284C7`
-3. **Warm Blend**: `#FB923C → #FF6B5A → #EC4899`
-4. **Cool Mint**: `#10B981 → #2DD4BF → #06B6D4`
-5. **Coral Teal**: `#FF6B5A → #2DD4BF`
-6. **Sunset Sky**: `#FBBF24 → #FB923C → #FF6B5A`
+1. **Terracotta Sunset**: `#d4845e → #fb923c → #fbbf24`
+2. **Warm Clay**: `#fb923c → #d4845e → #c97a54`
+3. **Soft Terracotta**: `#e89863 → #d4845e → #fb923c`
+4. **Light Warmth**: `#d4845e → #e89863 → #f0ac7b`
+5. **Classic Terracotta**: `#d4845e → #fb923c`
+6. **Golden Earth**: `#fbbf24 → #fb923c → #d4845e`
 
 ## State Colors
 
@@ -94,24 +95,49 @@ For visual variety in canvas previews, we use 6 curated gradients that stay with
 
 ## Implementation Notes
 
-- Use CSS variables in `index.css` for easy theme management
+- **Use CSS variables via Tailwind**: `bg-terracotta`, `text-text-secondary`, `bg-bg-panel/60`
+- CSS variables are defined in `src/index.css` for consistency and maintainability
 - Gradients should be subtle and purposeful, not decorative noise
-- Maintain the 70-20-10 rule: 70% neutrals, 20% coral/orange, 10% teal accent
-- Avoid color clashing by limiting simultaneous use of gradients
+- Maintain the 70-20-10 rule: 70% neutrals (dark backgrounds), 20% terracotta accents, 10% warm orange highlights
+- Use backdrop-blur with semi-transparent backgrounds for glass-morphism effect: `bg-bg-panel/60 backdrop-blur-sm`
+- Borders should almost always use terracotta with 20% opacity: `border-terracotta/20`
+- Hover states increase opacity: 20% → 50% or add glow with shadows
+
+### CSS Variable Usage Examples
+
+```tsx
+// Backgrounds
+className="bg-bg-deep"           // Base background (#1a1d28)
+className="bg-bg-panel/60"       // Glass panel with 60% opacity (#0f1117)
+
+// Brand colors
+className="bg-terracotta"        // Primary accent (#d4845e)
+className="text-terracotta"      // Terracotta text
+className="border-terracotta/20" // Terracotta border with 20% opacity
+
+// Gradients
+className="bg-gradient-to-r from-terracotta to-warm-orange"
+
+// Text colors
+className="text-text-secondary"  // Muted gray (#8b8d98)
+className="text-white"           // Primary text
+```
 
 ## Design Rationale
 
-**Why Coral + Teal?**
-- **Complementary harmony**: Coral (warm) and teal (cool) sit opposite on the color wheel, creating natural balance
-- **Creative energy**: Coral evokes creativity and passion without the aggression of pure red
-- **Professional polish**: Teal adds sophistication and trust
-- **Memorable**: This combination is distinctive without being chaotic
-- **Versatile**: Works for both playful and professional contexts
+**Why Terracotta + Warm Earths?**
+- **Natural materiality**: Terracotta evokes clay, craftsmanship, and tangible creative work
+- **Architect's studio aesthetic**: Creates a professional yet warm environment for visual planning
+- **Grounded creativity**: Warm without being aggressive, energetic without being chaotic
+- **Timeless sophistication**: Earthy tones feel polished and premium, not trendy
+- **Comfortable for extended use**: Warm tones are easier on the eyes than bright neons
+- **Memorable**: Distinctive palette that stands out from typical coral/blue or purple UI trends
 
 **Avoiding Common Pitfalls:**
 - ❌ No random rainbow gradients competing for attention
 - ❌ No harsh neon colors that strain the eyes
 - ❌ No more than 3 colors in a single UI element
-- ✅ Cohesive, intentional color choices
-- ✅ Clear visual hierarchy
-- ✅ Comfortable for extended use
+- ❌ No bright, cold blues that clash with the warm aesthetic
+- ✅ Cohesive warm palette with intentional variation
+- ✅ Clear visual hierarchy through opacity and borders
+- ✅ Glass-morphism and depth instead of flat design

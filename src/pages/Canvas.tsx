@@ -453,16 +453,16 @@ export default function Canvas() {
   }, [handleWheel, handleMouseMove, handleMouseUp, handlePaste]);
 
   return (
-    <div className="min-h-screen bg-[#1a1d28] text-white overflow-hidden">
+    <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
       {/* Header */}
-      <header className="border-b border-[#d4845e]/20 bg-[#0f1117]/80 backdrop-blur-xl sticky top-0 z-50 shadow-lg shadow-black/20">
+      <header className="border-b border-terracotta/20 bg-bg-panel/80 backdrop-blur-xl sticky top-0 z-50 shadow-lg shadow-black/20">
         <div className="max-w-[1800px] mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
               onClick={() => navigate("/")}
               variant="ghost"
               size="icon"
-              className="hover:bg-[#d4845e]/10 transition-all duration-300"
+              className="hover:bg-terracotta/10 transition-all duration-300"
             >
               <ArrowLeft className="w-5 h-5" strokeWidth={2} />
             </Button>
@@ -470,7 +470,7 @@ export default function Canvas() {
               <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Crimson Pro', serif" }}>
                 Canvas {id}
               </h1>
-              <p className="text-sm text-[#8b8d98] font-mono">Project Workspace</p>
+              <p className="text-sm text-text-secondary font-mono">Project Workspace</p>
             </div>
           </div>
 
@@ -478,21 +478,21 @@ export default function Canvas() {
             <Button
               variant="ghost"
               size="icon"
-              className="hover:bg-[#d4845e]/10 transition-all duration-300"
+              className="hover:bg-terracotta/10 transition-all duration-300"
             >
               <Settings className="w-5 h-5" strokeWidth={2} />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="hover:bg-[#d4845e]/10 transition-all duration-300"
+              className="hover:bg-terracotta/10 transition-all duration-300"
             >
               <Share2 className="w-5 h-5" strokeWidth={2} />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="hover:bg-[#d4845e]/10 transition-all duration-300"
+              className="hover:bg-terracotta/10 transition-all duration-300"
             >
               <Download className="w-5 h-5" strokeWidth={2} />
             </Button>
@@ -509,12 +509,12 @@ export default function Canvas() {
 
       {/* Floating Toolbar */}
       <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
-        <div className="bg-[#0f1117]/90 backdrop-blur-xl border border-[#d4845e]/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
+        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
           <Button
             onClick={addTextElement}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
+            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
             title="Add Text (T)"
           >
             <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -523,26 +523,26 @@ export default function Canvas() {
           <Button
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
+            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
             title="Add Image (Ctrl+V to paste)"
           >
             <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
           </Button>
 
-          <div className="h-px bg-[#d4845e]/20 my-2" />
+          <div className="h-px bg-terracotta/20 my-2" />
 
           <div className="flex flex-col items-center gap-2 py-2">
             <div className="flex items-center gap-2">
               <Switch
                 checked={tilingMode}
                 onCheckedChange={setTilingMode}
-                className="data-[state=checked]:bg-[#d4845e]"
+                className="data-[state=checked]:bg-terracotta"
               />
             </div>
-            <span className="text-[10px] text-[#8b8d98] font-mono">TILE</span>
+            <span className="text-[10px] text-text-secondary font-mono">TILE</span>
           </div>
 
-          <div className="h-px bg-[#d4845e]/20 my-2" />
+          <div className="h-px bg-terracotta/20 my-2" />
 
           <Button
             onClick={deleteSelected}
@@ -559,12 +559,12 @@ export default function Canvas() {
 
       {/* Zoom Controls */}
       <div className="fixed right-8 bottom-8 z-40">
-        <div className="bg-[#0f1117]/90 backdrop-blur-xl border border-[#d4845e]/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
+        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
           <Button
             onClick={zoomIn}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
+            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
             title="Zoom In (+)"
           >
             <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -572,7 +572,7 @@ export default function Canvas() {
 
           <button
             onClick={resetZoom}
-            className="w-12 h-12 flex items-center justify-center hover:bg-[#d4845e]/20 rounded-lg transition-all duration-300 font-mono text-xs text-[#8b8d98] hover:text-[#d4845e]"
+            className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
             title="Reset Zoom (0)"
           >
             {Math.round(viewport.zoom * 100)}%
@@ -582,7 +582,7 @@ export default function Canvas() {
             onClick={zoomOut}
             variant="ghost"
             size="icon"
-            className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
+            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
             title="Zoom Out (-)"
           >
             <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -592,14 +592,14 @@ export default function Canvas() {
 
       {/* Status Bar */}
       <div className="fixed left-8 bottom-8 z-40">
-        <div className="bg-[#0f1117]/90 backdrop-blur-xl border border-[#d4845e]/20 rounded-xl shadow-2xl shadow-black/40 px-4 py-2">
-          <div className="flex items-center gap-4 text-xs font-mono text-[#8b8d98]">
+        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-xl shadow-2xl shadow-black/40 px-4 py-2">
+          <div className="flex items-center gap-4 text-xs font-mono text-text-secondary">
             <div className="flex items-center gap-2">
               <Move className="w-4 h-4" strokeWidth={2} />
               <span>X: {Math.round(viewport.x)}</span>
               <span>Y: {Math.round(viewport.y)}</span>
             </div>
-            <div className="w-px h-4 bg-[#d4845e]/20" />
+            <div className="w-px h-4 bg-terracotta/20" />
             <div className="flex items-center gap-2">
               <Grid3x3 className="w-4 h-4" strokeWidth={2} />
               <span>{elements.length} objects</span>
@@ -611,26 +611,26 @@ export default function Canvas() {
       {/* Help Tooltip */}
       {elements.length === 0 && (
         <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none">
-          <div className="bg-[#0f1117]/90 backdrop-blur-xl border border-[#d4845e]/20 rounded-2xl shadow-2xl shadow-black/40 p-8 text-center animate-fade-in">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#d4845e] to-[#fb923c] flex items-center justify-center">
+          <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-8 text-center animate-fade-in">
+            <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-terracotta to-warm-orange flex items-center justify-center">
               <ImageIcon className="w-10 h-10 text-white" strokeWidth={2} />
             </div>
             <h2 className="text-2xl font-bold mb-3" style={{ fontFamily: "'Crimson Pro', serif" }}>
               Start Creating
             </h2>
-            <div className="text-sm text-[#8b8d98] space-y-2 max-w-md">
+            <div className="text-sm text-text-secondary space-y-2 max-w-md">
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Ctrl+V</kbd> Paste images from clipboard
+                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Ctrl+V</kbd> Paste images from clipboard
               </p>
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Scroll</kbd> Zoom in/out
+                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Scroll</kbd> Zoom in/out
               </p>
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">+/-</kbd> or
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e] ml-1">0</kbd> Zoom controls
+                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">+/-</kbd> or
+                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta ml-1">0</kbd> Zoom controls
               </p>
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Click+Drag</kbd> Move objects
+                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Click+Drag</kbd> Move objects
               </p>
             </div>
           </div>
@@ -663,8 +663,8 @@ export default function Canvas() {
               key={element.id}
               className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
                 selectedElement === element.id
-                  ? "ring-2 ring-[#d4845e] shadow-lg shadow-[#d4845e]/30"
-                  : "hover:ring-2 hover:ring-[#d4845e]/50"
+                  ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
+                  : "hover:ring-2 hover:ring-terracotta/50"
               }`}
               style={{
                 left: element.x,
@@ -684,7 +684,7 @@ export default function Canvas() {
                   draggable={false}
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-[#0f1117]/80 backdrop-blur-sm border-2 border-dashed border-[#d4845e]/40 rounded-lg p-4">
+                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
                   <p
                     className="text-center break-words"
                     style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}

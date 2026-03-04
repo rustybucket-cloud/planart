@@ -322,24 +322,24 @@ transition-all duration-300      /* Smooth 300ms transitions */
 
 ---
 
-## Color Context: App vs Canvas
+## Color Consistency: Unified Palette
 
-### Main App (Home, Projects)
-**Primary accent**: Coral `#FF6B5A`
-```tsx
-className="bg-[#FF6B5A] border-[#FF6B5A]/20 hover:shadow-[#FF6B5A]/30"
-```
-
-### Canvas Pages
+### All Pages (Home, Projects, Canvas)
 **Primary accent**: Terracotta `#d4845e`
 ```tsx
 className="bg-[#d4845e] border-[#d4845e]/20 hover:shadow-[#d4845e]/30"
 ```
 
-**Why different?**
-- Canvas needs a warmer, more grounded feel (architect's studio)
-- Terracotta relates to creative materials (clay, earth)
-- Differentiation between "navigation" (coral) and "workspace" (terracotta)
+**Secondary accent**: Warm Orange `#fb923c`
+```tsx
+className="bg-gradient-to-r from-[#d4845e] to-[#fb923c]"
+```
+
+**Why unified?**
+- Consistent brand identity across all pages
+- Warm, grounded aesthetic applies to entire app (architect's studio feel)
+- Terracotta relates to creative materials (clay, earth, craftsmanship)
+- Simplifies development and maintains visual coherence
 
 ---
 
