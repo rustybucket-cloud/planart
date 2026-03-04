@@ -41,8 +41,10 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 
 ### Keyboard Shortcuts
 - `Ctrl+V` - Paste images from clipboard
-- `Ctrl+Scroll` / `Ctrl+Mouse Wheel` - Zoom in/out
-- `Scroll` - Pan canvas (vertical and horizontal)
+- `Scroll` / `Mouse Wheel` - Zoom in/out (toward cursor position)
+- `+` / `=` - Zoom in
+- `-` - Zoom out
+- `0` - Reset zoom to 100%
 - `Shift+Click+Drag` - Pan canvas
 - `Click+Drag` on element - Move element
 - `Double-Click` on text - Edit text content
@@ -76,6 +78,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - [ ] Multi-select with marquee tool
 - [ ] Undo/redo system
 - [ ] Canvas persistence (save to database)
+- [x] Keyboard shortcuts for zoom (+/-, 0 to reset)
 - [ ] Keyboard shortcuts for delete (Del key)
 - [ ] Context menu for element actions
 - [ ] Grid snap mode

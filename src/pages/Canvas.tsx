@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from "react-router";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   ArrowLeft,
   Download,
@@ -50,6 +51,29 @@ export default function Canvas() {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const dragStartPos = useRef({ x: 0, y: 0 });
 
+  // Zoom controls
+  const zoomIn = () => {
+    setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }));
+  };
+
+  const zoomOut = () => {
+    setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }));
+  };
+
+  const resetZoom = () => {
+    setViewport({ x: 0, y: 0, zoom: 1 });
+  };
+
+  // Keyboard shortcuts for zoom
+  useKeyboardShortcuts({
+    shortcuts: [
+      { key: '+', callback: zoomIn, description: 'Zoom in' },
+      { key: '=', callback: zoomIn, description: 'Zoom in' },
+      { key: '-', callback: zoomOut, description: 'Zoom out' },
+      { key: '0', callback: resetZoom, description: 'Reset zoom' },
+    ],
+  });
+
   // Convert screen coordinates to canvas coordinates
   const screenToCanvas = useCallback(
     (screenX: number, screenY: number) => {
@@ -64,23 +88,21 @@ export default function Canvas() {
   // Handle mouse wheel for zooming
   const handleWheel = useCallback(
     (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
 
-        // Zoom towards mouse position
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (rect) {
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
+      // Zoom towards mouse position
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-          setViewport((prev) => ({
-            x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
-            y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
-            zoom: newZoom,
-          }));
-        }
+        setViewport((prev) => ({
+          x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
+          y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
+          zoom: newZoom,
+        }));
       }
     },
     [viewport.zoom]
@@ -243,19 +265,6 @@ export default function Canvas() {
     }
   };
 
-  // Zoom controls
-  const zoomIn = () => {
-    setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }));
-  };
-
-  const zoomOut = () => {
-    setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }));
-  };
-
-  const resetZoom = () => {
-    setViewport({ x: 0, y: 0, zoom: 1 });
-  };
-
   // Effects
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -387,7 +396,7 @@ export default function Canvas() {
             variant="ghost"
             size="icon"
             className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
-            title="Zoom In (Ctrl + Scroll)"
+            title="Zoom In (+)"
           >
             <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
           </Button>
@@ -395,7 +404,7 @@ export default function Canvas() {
           <button
             onClick={resetZoom}
             className="w-12 h-12 flex items-center justify-center hover:bg-[#d4845e]/20 rounded-lg transition-all duration-300 font-mono text-xs text-[#8b8d98] hover:text-[#d4845e]"
-            title="Reset Zoom (1:1)"
+            title="Reset Zoom (0)"
           >
             {Math.round(viewport.zoom * 100)}%
           </button>
@@ -405,7 +414,7 @@ export default function Canvas() {
             variant="ghost"
             size="icon"
             className="w-12 h-12 hover:bg-[#d4845e]/20 transition-all duration-300 group"
-            title="Zoom Out (Ctrl + Scroll)"
+            title="Zoom Out (-)"
           >
             <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
           </Button>
@@ -445,10 +454,11 @@ export default function Canvas() {
                 <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Ctrl+V</kbd> Paste images from clipboard
               </p>
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Scroll</kbd> Pan canvas
+                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Scroll</kbd> Zoom in/out
               </p>
               <p className="font-mono">
-                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Ctrl+Scroll</kbd> Zoom in/out
+                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">+/-</kbd> or
+                <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e] ml-1">0</kbd> Zoom controls
               </p>
               <p className="font-mono">
                 <kbd className="px-2 py-1 bg-[#d4845e]/10 rounded text-[#d4845e]">Click+Drag</kbd> Move objects
