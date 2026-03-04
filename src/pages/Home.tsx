@@ -26,7 +26,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
+    <div className="h-screen bg-[#0a0a0a] text-white relative overflow-hidden flex flex-col">
       {/* Grain texture overlay */}
       <div
         className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
@@ -39,9 +39,11 @@ export default function Home() {
       <div className="fixed top-20 right-[-10%] w-96 h-96 bg-[#FF6B5A]/10 rounded-full blur-[120px] animate-pulse" />
       <div className="fixed bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-[#2DD4BF]/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
 
-      <div className="relative z-10 max-w-[1800px] mx-auto px-8 py-12">
-        {/* Header */}
-        <header className="mb-16 animate-in fade-in slide-in-from-top-4 duration-700">
+      <div className="relative z-10 max-w-[1800px] mx-auto w-full flex flex-col h-full">
+        {/* Fixed Header Section */}
+        <div className="flex-shrink-0 px-8 pt-12 pb-8">
+          {/* Header */}
+          <header className="animate-in fade-in slide-in-from-top-4 duration-700">
           <div className="flex items-end justify-between mb-6">
             <div>
               <h1 className="text-7xl font-black tracking-tighter mb-2 bg-gradient-to-br from-white via-white to-gray-500 bg-clip-text text-transparent leading-[1.1]">
@@ -97,8 +99,13 @@ export default function Home() {
               </button>
             </div>
           </div>
-        </header>
+          </header>
+        </div>
 
+        {/* Scrollable Content Section */}
+        <div className="flex-1 overflow-y-auto px-8 pb-12 relative">
+          {/* Subtle fade indicator at top */}
+          <div className="sticky top-0 left-0 right-0 h-4 bg-gradient-to-b from-[#0a0a0a] to-transparent pointer-events-none z-10" />
         {/* Projects Section */}
         <section className="mb-16 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
           <div className="flex items-center gap-4 mb-6">
@@ -212,6 +219,7 @@ export default function Home() {
             </div>
           )}
         </section>
+        </div>
       </div>
     </div>
   );

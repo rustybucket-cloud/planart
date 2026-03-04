@@ -144,4 +144,31 @@
     @apply bg-background text-foreground;
     font-family: 'Outfit', system-ui, -apple-system, sans-serif;
     }
+
+  /* Custom scrollbar styles */
+  *::-webkit-scrollbar {
+    width: 12px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 107, 90, 0.3);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 107, 90, 0.5);
+    background-clip: padding-box;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 107, 90, 0.3) rgba(255, 255, 255, 0.02);
+  }
 }
