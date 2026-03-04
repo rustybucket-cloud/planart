@@ -19,6 +19,13 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - **Image elements**: Paste from clipboard or upload via file picker, displays at natural dimensions
 - **Text elements**: Click toolbar button to enter placement mode, click canvas to place, double-click to edit content
 
+#### Image Resizing
+- **Corner resize handles**: Four handles appear at corners when an image is selected
+- **Proportional scaling**: Drag any corner to resize while maintaining aspect ratio
+- **Free transform**: Hold Shift while dragging to unlock aspect ratio
+- **Minimum size**: Images cannot be resized smaller than 20x20 pixels
+- **Visual feedback**: Handles highlight on hover, cursor changes to resize indicator
+
 #### Placement Mode
 - **Click-to-place interaction**: Click a tool button (e.g., Text, Image) to enter placement mode
 - **Visual preview**: Semi-transparent preview follows cursor showing where element will be placed
@@ -72,6 +79,8 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - `Double-Click` on text - Edit text content
 - `Del` / `Backspace` - Delete selected element
 - `Right-click` on element - Open context menu
+- `Drag corner handle` - Resize image (proportional)
+- `Shift+Drag corner handle` - Resize image (free transform)
 
 ### Technical Details
 
@@ -96,7 +105,8 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 ### Planned Features
 - [x] Image upload via file picker
 - [ ] Export canvas as image (PNG/JPG/SVG)
-- [ ] Element rotation and resizing
+- [x] Element resizing (images)
+- [ ] Element rotation
 - [ ] Layer ordering (bring forward, send backward)
 - [ ] Multi-select with marquee tool
 - [ ] Undo/redo system

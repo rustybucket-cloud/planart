@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   ArrowLeft,
@@ -41,6 +41,120 @@ interface ViewportState {
   zoom: number;
 }
 
+// Helper function to check if two rectangles overlap
+const rectanglesOverlap = (
+  x1: number,
+  y1: number,
+  w1: number,
+  h1: number,
+  x2: number,
+  y2: number,
+  w2: number,
+  h2: number
+) => {
+  return !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1);
+};
+
+// Calculate position for adjacent tile based on cursor direction
+const calculateAdjacentPosition = (
+  selectedEl: CanvasElement,
+  allElements: CanvasElement[],
+  mouseScreenX: number,
+  mouseScreenY: number,
+  newWidth: number,
+  newHeight: number,
+  viewport: ViewportState
+) => {
+  const spacing = 10;
+
+  // Calculate selected element center in canvas coordinates
+  const selectedCenterX = selectedEl.x + selectedEl.width / 2;
+  const selectedCenterY = selectedEl.y + selectedEl.height / 2;
+
+  // Convert mouse position to canvas coordinates
+  const mouseCanvas = {
+    x: (mouseScreenX - viewport.x) / viewport.zoom,
+    y: (mouseScreenY - viewport.y) / viewport.zoom,
+  };
+
+  // Calculate angle from selected center to mouse position
+  const dx = mouseCanvas.x - selectedCenterX;
+  const dy = mouseCanvas.y - selectedCenterY;
+  const angle = Math.atan2(dy, dx);
+
+  // Convert angle to degrees (0-360)
+  const degrees = ((angle * 180) / Math.PI + 360) % 360;
+
+  // Determine direction and step vectors
+  let baseX = selectedEl.x;
+  let baseY = selectedEl.y;
+  let stepX = 0;
+  let stepY = 0;
+
+  if (degrees >= 337.5 || degrees < 22.5) {
+    baseX = selectedEl.x + selectedEl.width + spacing;
+    baseY = selectedEl.y;
+    stepX = newWidth + spacing;
+    stepY = 0;
+  } else if (degrees >= 22.5 && degrees < 67.5) {
+    baseX = selectedEl.x + selectedEl.width + spacing;
+    baseY = selectedEl.y - newHeight - spacing;
+    stepX = newWidth + spacing;
+    stepY = -(newHeight + spacing);
+  } else if (degrees >= 67.5 && degrees < 112.5) {
+    baseX = selectedEl.x;
+    baseY = selectedEl.y - newHeight - spacing;
+    stepX = 0;
+    stepY = -(newHeight + spacing);
+  } else if (degrees >= 112.5 && degrees < 157.5) {
+    baseX = selectedEl.x - newWidth - spacing;
+    baseY = selectedEl.y - newHeight - spacing;
+    stepX = -(newWidth + spacing);
+    stepY = -(newHeight + spacing);
+  } else if (degrees >= 157.5 && degrees < 202.5) {
+    baseX = selectedEl.x - newWidth - spacing;
+    baseY = selectedEl.y;
+    stepX = -(newWidth + spacing);
+    stepY = 0;
+  } else if (degrees >= 202.5 && degrees < 247.5) {
+    baseX = selectedEl.x - newWidth - spacing;
+    baseY = selectedEl.y + selectedEl.height + spacing;
+    stepX = -(newWidth + spacing);
+    stepY = newHeight + spacing;
+  } else if (degrees >= 247.5 && degrees < 292.5) {
+    baseX = selectedEl.x;
+    baseY = selectedEl.y + selectedEl.height + spacing;
+    stepX = 0;
+    stepY = newHeight + spacing;
+  } else {
+    baseX = selectedEl.x + selectedEl.width + spacing;
+    baseY = selectedEl.y + selectedEl.height + spacing;
+    stepX = newWidth + spacing;
+    stepY = newHeight + spacing;
+  }
+
+  let x = baseX;
+  let y = baseY;
+  let attempts = 0;
+  const maxAttempts = 50;
+
+  while (attempts < maxAttempts) {
+    const hasOverlap = allElements.some((el) =>
+      rectanglesOverlap(x, y, newWidth, newHeight, el.x, el.y, el.width, el.height)
+    );
+
+    if (!hasOverlap) {
+      return { x, y };
+    }
+
+    x += stepX;
+    y += stepY;
+    attempts++;
+  }
+
+  return { x, y };
+};
+
 export default function Canvas() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -68,6 +182,33 @@ export default function Canvas() {
   const currentMousePos = useRef({ x: 0, y: 0 });
   const pendingDrag = useRef<{ elementId: string; startX: number; startY: number } | null>(null);
   const DRAG_THRESHOLD = 5; // pixels before drag starts
+
+  // Resize state
+  type ResizeCorner = "nw" | "ne" | "sw" | "se";
+
+  interface ResizeState {
+    elementId: string;
+    corner: ResizeCorner;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    startElementX: number;
+    startElementY: number;
+    aspectRatio: number;
+  }
+
+  const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
+  const pendingResize = useRef<ResizeState | null>(null);
+  const MIN_SIZE = 20;
+  const RESIZE_THRESHOLD = 5;
+
+  const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
+    nw: { cursor: "nwse-resize", position: { top: -6, left: -6 } },
+    ne: { cursor: "nesw-resize", position: { top: -6, right: -6 } },
+    sw: { cursor: "nesw-resize", position: { bottom: -6, left: -6 } },
+    se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
+  };
 
   // Zoom controls
   const zoomIn = () => {
@@ -108,6 +249,33 @@ export default function Canvas() {
     setPendingImage(null);
   };
 
+  // Handle resize start on corner handle
+  const handleResizeStart = (
+    e: React.MouseEvent,
+    elementId: string,
+    corner: ResizeCorner
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    pendingResize.current = {
+      elementId,
+      corner,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: element.width,
+      startHeight: element.height,
+      startElementX: element.x,
+      startElementY: element.y,
+      aspectRatio: element.width / element.height,
+    };
+
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
   // Handle file selection for image upload
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,164 +308,38 @@ export default function Canvas() {
   });
 
   // Convert screen coordinates to canvas coordinates
-  const screenToCanvas = useCallback(
-    (screenX: number, screenY: number) => {
-      return {
-        x: (screenX - viewport.x) / viewport.zoom,
-        y: (screenY - viewport.y) / viewport.zoom,
-      };
-    },
-    [viewport]
-  );
-
-  // Helper function to check if two rectangles overlap
-  const rectanglesOverlap = (
-    x1: number,
-    y1: number,
-    w1: number,
-    h1: number,
-    x2: number,
-    y2: number,
-    w2: number,
-    h2: number
-  ) => {
-    return !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1);
+  const screenToCanvas = (screenX: number, screenY: number) => {
+    return {
+      x: (screenX - viewport.x) / viewport.zoom,
+      y: (screenY - viewport.y) / viewport.zoom,
+    };
   };
 
-  // Calculate position for adjacent tile based on cursor direction
-  const calculateAdjacentPosition = useCallback(
-    (
-      selectedEl: CanvasElement,
-      allElements: CanvasElement[],
-      mouseScreenX: number,
-      mouseScreenY: number,
-      newWidth: number,
-      newHeight: number
-    ) => {
-      const spacing = 10;
+  // Refs to store current state values for stable event handlers
+  const stateRef = useRef({
+    isPanning,
+    draggedElement,
+    resizingElement,
+    viewport,
+    placingObjectType,
+    tilingMode,
+    selectedElement,
+    elements,
+  });
 
-      // Calculate selected element center in canvas coordinates
-      const selectedCenterX = selectedEl.x + selectedEl.width / 2;
-      const selectedCenterY = selectedEl.y + selectedEl.height / 2;
-
-      // Convert mouse position to canvas coordinates
-      const mouseCanvas = screenToCanvas(mouseScreenX, mouseScreenY);
-
-      // Calculate angle from selected center to mouse position
-      const dx = mouseCanvas.x - selectedCenterX;
-      const dy = mouseCanvas.y - selectedCenterY;
-      const angle = Math.atan2(dy, dx);
-
-      // Convert angle to degrees (0-360)
-      const degrees = ((angle * 180) / Math.PI + 360) % 360;
-
-      // Determine direction and step vectors
-      let baseX = selectedEl.x;
-      let baseY = selectedEl.y;
-      let stepX = 0;
-      let stepY = 0;
-
-      if (degrees >= 337.5 || degrees < 22.5) {
-        // Right (E)
-        baseX = selectedEl.x + selectedEl.width + spacing;
-        baseY = selectedEl.y;
-        stepX = newWidth + spacing;
-        stepY = 0;
-      } else if (degrees >= 22.5 && degrees < 67.5) {
-        // Northeast (NE)
-        baseX = selectedEl.x + selectedEl.width + spacing;
-        baseY = selectedEl.y - newHeight - spacing;
-        stepX = newWidth + spacing;
-        stepY = -(newHeight + spacing);
-      } else if (degrees >= 67.5 && degrees < 112.5) {
-        // Up (N)
-        baseX = selectedEl.x;
-        baseY = selectedEl.y - newHeight - spacing;
-        stepX = 0;
-        stepY = -(newHeight + spacing);
-      } else if (degrees >= 112.5 && degrees < 157.5) {
-        // Northwest (NW)
-        baseX = selectedEl.x - newWidth - spacing;
-        baseY = selectedEl.y - newHeight - spacing;
-        stepX = -(newWidth + spacing);
-        stepY = -(newHeight + spacing);
-      } else if (degrees >= 157.5 && degrees < 202.5) {
-        // Left (W)
-        baseX = selectedEl.x - newWidth - spacing;
-        baseY = selectedEl.y;
-        stepX = -(newWidth + spacing);
-        stepY = 0;
-      } else if (degrees >= 202.5 && degrees < 247.5) {
-        // Southwest (SW)
-        baseX = selectedEl.x - newWidth - spacing;
-        baseY = selectedEl.y + selectedEl.height + spacing;
-        stepX = -(newWidth + spacing);
-        stepY = newHeight + spacing;
-      } else if (degrees >= 247.5 && degrees < 292.5) {
-        // Down (S)
-        baseX = selectedEl.x;
-        baseY = selectedEl.y + selectedEl.height + spacing;
-        stepX = 0;
-        stepY = newHeight + spacing;
-      } else {
-        // Southeast (SE) - 292.5-337.5
-        baseX = selectedEl.x + selectedEl.width + spacing;
-        baseY = selectedEl.y + selectedEl.height + spacing;
-        stepX = newWidth + spacing;
-        stepY = newHeight + spacing;
-      }
-
-      // Find first non-overlapping position in the direction
-      let x = baseX;
-      let y = baseY;
-      let attempts = 0;
-      const maxAttempts = 50; // Prevent infinite loops
-
-      while (attempts < maxAttempts) {
-        // Check if current position overlaps with any existing element
-        const hasOverlap = allElements.some((el) =>
-          rectanglesOverlap(x, y, newWidth, newHeight, el.x, el.y, el.width, el.height)
-        );
-
-        if (!hasOverlap) {
-          // Found a clear spot!
-          return { x, y };
-        }
-
-        // Move further in the direction
-        x += stepX;
-        y += stepY;
-        attempts++;
-      }
-
-      // Fallback: return the last attempted position if we couldn't find a clear spot
-      return { x, y };
-    },
-    [screenToCanvas]
-  );
-
-  // Handle mouse wheel for zooming
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
-
-      // Zoom towards mouse position
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        setViewport((prev) => ({
-          x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
-          y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
-          zoom: newZoom,
-        }));
-      }
-    },
-    [viewport.zoom]
-  );
+  // Update state ref in effect (not during render)
+  useEffect(() => {
+    stateRef.current = {
+      isPanning,
+      draggedElement,
+      resizingElement,
+      viewport,
+      placingObjectType,
+      tilingMode,
+      selectedElement,
+      elements,
+    };
+  });
 
   // Handle panning and placement
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -309,7 +351,7 @@ export default function Canvas() {
 
         if (placingObjectType === "text") {
           const newElement: CanvasElement = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             type: "text",
             x: canvasPos.x - 100,
             y: canvasPos.y - 30,
@@ -323,7 +365,7 @@ export default function Canvas() {
           setTimeout(() => setEditingElementId(newElement.id), 0);
         } else if (placingObjectType === "image" && pendingImage) {
           const newElement: CanvasElement = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             type: "image",
             x: canvasPos.x - pendingImage.width / 2,
             y: canvasPos.y - pendingImage.height / 2,
@@ -349,156 +391,6 @@ export default function Canvas() {
     }
   };
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      // Check if pending drag should become actual drag
-      if (pendingDrag.current && !draggedElement) {
-        const dx = e.clientX - pendingDrag.current.startX;
-        const dy = e.clientY - pendingDrag.current.startY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance >= DRAG_THRESHOLD) {
-          setDraggedElement(pendingDrag.current.elementId);
-          lastMousePos.current = { x: e.clientX, y: e.clientY };
-        }
-      }
-
-      if (isPanning) {
-        const dx = e.clientX - lastMousePos.current.x;
-        const dy = e.clientY - lastMousePos.current.y;
-        setViewport((prev) => ({
-          ...prev,
-          x: prev.x + dx,
-          y: prev.y + dy,
-        }));
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
-      } else if (draggedElement) {
-        const dx = (e.clientX - lastMousePos.current.x) / viewport.zoom;
-        const dy = (e.clientY - lastMousePos.current.y) / viewport.zoom;
-
-        setElements((prev) =>
-          prev.map((el) =>
-            el.id === draggedElement
-              ? { ...el, x: el.x + dx, y: el.y + dy }
-              : el
-          )
-        );
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
-      }
-
-      // Update preview position when in placement mode
-      if (placingObjectType) {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (rect) {
-          const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
-          setPreviewPos(canvasPos);
-        }
-      }
-    },
-    [isPanning, draggedElement, viewport.zoom, placingObjectType, screenToCanvas]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-    setDraggedElement(null);
-    pendingDrag.current = null;
-  }, []);
-
-  // Handle paste from clipboard
-  const handlePaste = useCallback(
-    async (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        if (item.type.indexOf("image") !== -1) {
-          const blob = item.getAsFile();
-          if (!blob) continue;
-
-          const url = URL.createObjectURL(blob);
-          const img = new Image();
-          img.src = url;
-
-          img.onload = () => {
-            if (tilingMode) {
-              // Find selected element if one exists
-              const selectedEl = selectedElement
-                ? elements.find(el => el.id === selectedElement)
-                : null;
-
-              if (selectedEl) {
-                // Smart adjacent tiling
-                const { x, y } = calculateAdjacentPosition(
-                  selectedEl,
-                  elements,
-                  currentMousePos.current.x,
-                  currentMousePos.current.y,
-                  img.width,
-                  img.height
-                );
-
-                const newElement: CanvasElement = {
-                  id: Date.now().toString(),
-                  type: "image",
-                  x,
-                  y,
-                  width: img.width,
-                  height: img.height,
-                  content: url,
-                };
-
-                setElements((prev) => [...prev, newElement]);
-              } else {
-                // Grid mode: Create 4×3 grid at screen center
-                const canvasPos = screenToCanvas(
-                  window.innerWidth / 2,
-                  window.innerHeight / 2
-                );
-                const cols = 4;
-                const rows = 3;
-                const spacing = 10;
-
-                for (let row = 0; row < rows; row++) {
-                  for (let col = 0; col < cols; col++) {
-                    const newElement: CanvasElement = {
-                      id: `${Date.now()}-${row}-${col}`,
-                      type: "image",
-                      x: canvasPos.x + col * (img.width + spacing),
-                      y: canvasPos.y + row * (img.height + spacing),
-                      width: img.width,
-                      height: img.height,
-                      content: url,
-                    };
-                    setElements((prev) => [...prev, newElement]);
-                  }
-                }
-              }
-            } else {
-              // Normal mode: paste at cursor position (centered on cursor)
-              const cursorPos = screenToCanvas(
-                currentMousePos.current.x,
-                currentMousePos.current.y
-              );
-
-              const newElement: CanvasElement = {
-                id: Date.now().toString(),
-                type: "image",
-                x: cursorPos.x - img.width / 2,
-                y: cursorPos.y - img.height / 2,
-                width: img.width,
-                height: img.height,
-                content: url,
-              };
-              setElements((prev) => [...prev, newElement]);
-            }
-          };
-        }
-      }
-    },
-    [screenToCanvas, tilingMode, selectedElement, elements, calculateAdjacentPosition]
-  );
 
   // Handle element drag start - uses threshold to allow double-clicks
   const handleElementMouseDown = (e: React.MouseEvent, elementId: string) => {
@@ -533,7 +425,7 @@ export default function Canvas() {
     setEditingElementId(null);
   };
 
-  // Effects
+  // Effects - event listeners with stable handlers that read from stateRef
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -541,6 +433,227 @@ export default function Canvas() {
     // Track global mouse position for paste direction calculation
     const trackMousePosition = (e: MouseEvent) => {
       currentMousePos.current = { x: e.clientX, y: e.clientY };
+    };
+
+    // Handle mouse wheel for zooming
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { viewport } = stateRef.current;
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        setViewport((prev) => ({
+          x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
+          y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
+          zoom: newZoom,
+        }));
+      }
+    };
+
+    // Handle mouse move for drag, resize, and pan
+    const handleMouseMove = (e: MouseEvent) => {
+      const { isPanning, draggedElement, resizingElement, viewport, placingObjectType } = stateRef.current;
+
+      // Check if pending drag should become actual drag
+      if (pendingDrag.current && !draggedElement) {
+        const dx = e.clientX - pendingDrag.current.startX;
+        const dy = e.clientY - pendingDrag.current.startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= DRAG_THRESHOLD) {
+          setDraggedElement(pendingDrag.current.elementId);
+          lastMousePos.current = { x: e.clientX, y: e.clientY };
+        }
+      }
+
+      // Check if pending resize should become actual resize
+      if (pendingResize.current && !resizingElement) {
+        const dx = e.clientX - pendingResize.current.startX;
+        const dy = e.clientY - pendingResize.current.startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= RESIZE_THRESHOLD) {
+          setResizingElement(pendingResize.current);
+        }
+      }
+
+      // Handle active resize
+      if (resizingElement) {
+        const {
+          elementId,
+          corner,
+          startX,
+          startWidth,
+          startHeight,
+          startElementX,
+          startElementY,
+          aspectRatio,
+        } = resizingElement;
+
+        const dx = (e.clientX - startX) / viewport.zoom;
+        const dy = (e.clientY - resizingElement.startY) / viewport.zoom;
+        const maintainAspect = !e.shiftKey;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newX = startElementX;
+        let newY = startElementY;
+
+        switch (corner) {
+          case "se":
+            newWidth = Math.max(MIN_SIZE, startWidth + dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
+            break;
+          case "sw":
+            newWidth = Math.max(MIN_SIZE, startWidth - dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
+            newX = startElementX + startWidth - newWidth;
+            break;
+          case "ne":
+            newWidth = Math.max(MIN_SIZE, startWidth + dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
+            newY = startElementY + startHeight - newHeight;
+            break;
+          case "nw":
+            newWidth = Math.max(MIN_SIZE, startWidth - dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
+            newX = startElementX + startWidth - newWidth;
+            newY = startElementY + startHeight - newHeight;
+            break;
+        }
+
+        setElements((prev) =>
+          prev.map((el) =>
+            el.id === elementId ? { ...el, x: newX, y: newY, width: newWidth, height: newHeight } : el
+          )
+        );
+      } else if (isPanning) {
+        const dx = e.clientX - lastMousePos.current.x;
+        const dy = e.clientY - lastMousePos.current.y;
+        setViewport((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+      } else if (draggedElement) {
+        const dx = (e.clientX - lastMousePos.current.x) / viewport.zoom;
+        const dy = (e.clientY - lastMousePos.current.y) / viewport.zoom;
+        setElements((prev) =>
+          prev.map((el) => (el.id === draggedElement ? { ...el, x: el.x + dx, y: el.y + dy } : el))
+        );
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+      }
+
+      // Update preview position when in placement mode
+      if (placingObjectType) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const canvasPos = {
+            x: (e.clientX - rect.left - viewport.x) / viewport.zoom,
+            y: (e.clientY - rect.top - viewport.y) / viewport.zoom,
+          };
+          setPreviewPos(canvasPos);
+        }
+      }
+    };
+
+    // Handle mouse up
+    const handleMouseUp = () => {
+      setIsPanning(false);
+      setDraggedElement(null);
+      setResizingElement(null);
+      pendingDrag.current = null;
+      pendingResize.current = null;
+    };
+
+    // Handle paste from clipboard
+    const handlePaste = async (e: ClipboardEvent) => {
+      const { tilingMode, selectedElement, elements, viewport } = stateRef.current;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        if (item.type.indexOf("image") !== -1) {
+          const blob = item.getAsFile();
+          if (!blob) continue;
+
+          const url = URL.createObjectURL(blob);
+          const img = new Image();
+          img.src = url;
+
+          img.onload = () => {
+            if (tilingMode) {
+              const selectedEl = selectedElement ? elements.find((el) => el.id === selectedElement) : null;
+
+              if (selectedEl) {
+                const { x, y } = calculateAdjacentPosition(
+                  selectedEl,
+                  elements,
+                  currentMousePos.current.x,
+                  currentMousePos.current.y,
+                  img.width,
+                  img.height,
+                  viewport
+                );
+
+                const newElement: CanvasElement = {
+                  id: crypto.randomUUID(),
+                  type: "image",
+                  x,
+                  y,
+                  width: img.width,
+                  height: img.height,
+                  content: url,
+                };
+                setElements((prev) => [...prev, newElement]);
+              } else {
+                const canvasPos = {
+                  x: (window.innerWidth / 2 - viewport.x) / viewport.zoom,
+                  y: (window.innerHeight / 2 - viewport.y) / viewport.zoom,
+                };
+                const cols = 4;
+                const rows = 3;
+                const spacing = 10;
+
+                for (let row = 0; row < rows; row++) {
+                  for (let col = 0; col < cols; col++) {
+                    const newElement: CanvasElement = {
+                      id: crypto.randomUUID(),
+                      type: "image",
+                      x: canvasPos.x + col * (img.width + spacing),
+                      y: canvasPos.y + row * (img.height + spacing),
+                      width: img.width,
+                      height: img.height,
+                      content: url,
+                    };
+                    setElements((prev) => [...prev, newElement]);
+                  }
+                }
+              }
+            } else {
+              const cursorPos = {
+                x: (currentMousePos.current.x - viewport.x) / viewport.zoom,
+                y: (currentMousePos.current.y - viewport.y) / viewport.zoom,
+              };
+
+              const newElement: CanvasElement = {
+                id: crypto.randomUUID(),
+                type: "image",
+                x: cursorPos.x - img.width / 2,
+                y: cursorPos.y - img.height / 2,
+                width: img.width,
+                height: img.height,
+                content: url,
+              };
+              setElements((prev) => [...prev, newElement]);
+            }
+          };
+        }
+      }
     };
 
     canvas.addEventListener("wheel", handleWheel, { passive: false });
@@ -556,7 +669,7 @@ export default function Canvas() {
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("paste", handlePaste);
     };
-  }, [handleWheel, handleMouseMove, handleMouseUp, handlePaste]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
@@ -756,7 +869,11 @@ export default function Canvas() {
       <div
         ref={canvasRef}
         className={`fixed inset-0 top-[73px] select-none ${
-          placingObjectType ? "cursor-crosshair" : "cursor-move"
+          resizingElement
+            ? ""
+            : placingObjectType
+              ? "cursor-crosshair"
+              : "cursor-move"
         }`}
         style={{
           backgroundImage: `
@@ -765,6 +882,7 @@ export default function Canvas() {
           `,
           backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
           backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.corner].cursor : undefined,
         }}
         onMouseDown={handleMouseDown}
       >
@@ -795,12 +913,32 @@ export default function Canvas() {
                   onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
                 >
                   {element.type === "image" ? (
-                    <img
-                      src={element.content}
-                      alt="Canvas element"
-                      className="w-full h-full object-cover rounded-lg"
-                      draggable={false}
-                    />
+                    <>
+                      <img
+                        src={element.content}
+                        alt="Canvas element"
+                        className="w-full h-full object-cover rounded-lg"
+                        draggable={false}
+                      />
+                      {/* Resize handles for selected images */}
+                      {selectedElement === element.id && (
+                        <>
+                          {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                            <div
+                              key={corner}
+                              className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                         shadow-md shadow-black/30 z-10
+                                         transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                              style={{
+                                cursor: HANDLE_CONFIGS[corner].cursor,
+                                ...HANDLE_CONFIGS[corner].position,
+                              }}
+                              onMouseDown={(e) => handleResizeStart(e, element.id, corner)}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </>
                   ) : editingElementId === element.id ? (
                     <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
                       <textarea
