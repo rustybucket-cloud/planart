@@ -9,7 +9,7 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 
 #### Core Canvas System
 - **Infinite pan & zoom**: Smooth viewport controls with coordinate tracking
-- **Paste from clipboard** (Ctrl+V): Direct image pasting from system clipboard
+- **Paste from clipboard** (Ctrl+V): Direct image pasting from system clipboard at cursor position
 - **Drag & drop positioning**: Click and drag any element to reposition
 - **Selection system**: Visual selection ring with delete capability
 - **Viewport controls**: Pan by scrolling or Shift+Click+Drag
@@ -21,9 +21,15 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 
 #### Tiling Mode ✨
 - **Toggle switch** in left toolbar
-- When enabled, pasting an image creates a **4×3 grid** (12 total tiles)
-- 10px spacing between tiles
-- Perfect for pattern exploration and mood boards
+- **Smart adjacent tiling**: When an element is selected, pasting creates a single tile adjacent to it in the direction of your cursor
+  - Supports 8 cardinal directions (N, NE, E, SE, S, SW, W, NW)
+  - 10px spacing between tiles
+  - **Collision detection**: Automatically finds the next available spot if the initial position is occupied
+  - Tiles "slide" in the cursor direction until finding a clear space
+  - Perfect for building custom grids and patterns with precise control
+- **Grid mode**: When no element is selected, pasting creates a **4×3 grid** (12 total tiles)
+  - Centered at viewport
+  - Ideal for quick pattern exploration and mood boards
 
 #### User Interface
 - **Floating left toolbar**: Text tool, image info, tiling toggle, delete button
@@ -116,3 +122,4 @@ The infinite canvas is the core creative workspace of PlanArt. It allows users t
 - **Speed**: Fastest way to get content onto canvas
 - **Natural workflow**: Users already copy images from web, screenshots, etc.
 - **Cross-platform**: Works everywhere clipboard API is supported
+- **Intuitive placement**: Images paste exactly where your cursor is pointing

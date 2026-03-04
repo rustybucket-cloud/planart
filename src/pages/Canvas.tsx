@@ -50,6 +50,7 @@ export default function Canvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const currentMousePos = useRef({ x: 0, y: 0 });
 
   // Zoom controls
   const zoomIn = () => {
@@ -83,6 +84,132 @@ export default function Canvas() {
       };
     },
     [viewport]
+  );
+
+  // Helper function to check if two rectangles overlap
+  const rectanglesOverlap = (
+    x1: number,
+    y1: number,
+    w1: number,
+    h1: number,
+    x2: number,
+    y2: number,
+    w2: number,
+    h2: number
+  ) => {
+    return !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1);
+  };
+
+  // Calculate position for adjacent tile based on cursor direction
+  const calculateAdjacentPosition = useCallback(
+    (
+      selectedEl: CanvasElement,
+      allElements: CanvasElement[],
+      mouseScreenX: number,
+      mouseScreenY: number,
+      newWidth: number,
+      newHeight: number
+    ) => {
+      const spacing = 10;
+
+      // Calculate selected element center in canvas coordinates
+      const selectedCenterX = selectedEl.x + selectedEl.width / 2;
+      const selectedCenterY = selectedEl.y + selectedEl.height / 2;
+
+      // Convert mouse position to canvas coordinates
+      const mouseCanvas = screenToCanvas(mouseScreenX, mouseScreenY);
+
+      // Calculate angle from selected center to mouse position
+      const dx = mouseCanvas.x - selectedCenterX;
+      const dy = mouseCanvas.y - selectedCenterY;
+      const angle = Math.atan2(dy, dx);
+
+      // Convert angle to degrees (0-360)
+      const degrees = ((angle * 180) / Math.PI + 360) % 360;
+
+      // Determine direction and step vectors
+      let baseX = selectedEl.x;
+      let baseY = selectedEl.y;
+      let stepX = 0;
+      let stepY = 0;
+
+      if (degrees >= 337.5 || degrees < 22.5) {
+        // Right (E)
+        baseX = selectedEl.x + selectedEl.width + spacing;
+        baseY = selectedEl.y;
+        stepX = newWidth + spacing;
+        stepY = 0;
+      } else if (degrees >= 22.5 && degrees < 67.5) {
+        // Northeast (NE)
+        baseX = selectedEl.x + selectedEl.width + spacing;
+        baseY = selectedEl.y - newHeight - spacing;
+        stepX = newWidth + spacing;
+        stepY = -(newHeight + spacing);
+      } else if (degrees >= 67.5 && degrees < 112.5) {
+        // Up (N)
+        baseX = selectedEl.x;
+        baseY = selectedEl.y - newHeight - spacing;
+        stepX = 0;
+        stepY = -(newHeight + spacing);
+      } else if (degrees >= 112.5 && degrees < 157.5) {
+        // Northwest (NW)
+        baseX = selectedEl.x - newWidth - spacing;
+        baseY = selectedEl.y - newHeight - spacing;
+        stepX = -(newWidth + spacing);
+        stepY = -(newHeight + spacing);
+      } else if (degrees >= 157.5 && degrees < 202.5) {
+        // Left (W)
+        baseX = selectedEl.x - newWidth - spacing;
+        baseY = selectedEl.y;
+        stepX = -(newWidth + spacing);
+        stepY = 0;
+      } else if (degrees >= 202.5 && degrees < 247.5) {
+        // Southwest (SW)
+        baseX = selectedEl.x - newWidth - spacing;
+        baseY = selectedEl.y + selectedEl.height + spacing;
+        stepX = -(newWidth + spacing);
+        stepY = newHeight + spacing;
+      } else if (degrees >= 247.5 && degrees < 292.5) {
+        // Down (S)
+        baseX = selectedEl.x;
+        baseY = selectedEl.y + selectedEl.height + spacing;
+        stepX = 0;
+        stepY = newHeight + spacing;
+      } else {
+        // Southeast (SE) - 292.5-337.5
+        baseX = selectedEl.x + selectedEl.width + spacing;
+        baseY = selectedEl.y + selectedEl.height + spacing;
+        stepX = newWidth + spacing;
+        stepY = newHeight + spacing;
+      }
+
+      // Find first non-overlapping position in the direction
+      let x = baseX;
+      let y = baseY;
+      let attempts = 0;
+      const maxAttempts = 50; // Prevent infinite loops
+
+      while (attempts < maxAttempts) {
+        // Check if current position overlaps with any existing element
+        const hasOverlap = allElements.some((el) =>
+          rectanglesOverlap(x, y, newWidth, newHeight, el.x, el.y, el.width, el.height)
+        );
+
+        if (!hasOverlap) {
+          // Found a clear spot!
+          return { x, y };
+        }
+
+        // Move further in the direction
+        x += stepX;
+        y += stepY;
+        attempts++;
+      }
+
+      // Fallback: return the last attempted position if we couldn't find a clear spot
+      return { x, y };
+    },
+    [screenToCanvas]
   );
 
   // Handle mouse wheel for zooming
@@ -168,38 +295,71 @@ export default function Canvas() {
           img.src = url;
 
           img.onload = () => {
-            const canvasPos = screenToCanvas(
-              window.innerWidth / 2,
-              window.innerHeight / 2
-            );
-
             if (tilingMode) {
-              // In tiling mode, create a grid of images
-              const cols = 4;
-              const rows = 3;
-              const spacing = 10;
+              // Find selected element if one exists
+              const selectedEl = selectedElement
+                ? elements.find(el => el.id === selectedElement)
+                : null;
 
-              for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < cols; col++) {
-                  const newElement: CanvasElement = {
-                    id: `${Date.now()}-${row}-${col}`,
-                    type: "image",
-                    x: canvasPos.x + col * (img.width + spacing),
-                    y: canvasPos.y + row * (img.height + spacing),
-                    width: img.width,
-                    height: img.height,
-                    content: url,
-                  };
-                  setElements((prev) => [...prev, newElement]);
+              if (selectedEl) {
+                // Smart adjacent tiling
+                const { x, y } = calculateAdjacentPosition(
+                  selectedEl,
+                  elements,
+                  currentMousePos.current.x,
+                  currentMousePos.current.y,
+                  img.width,
+                  img.height
+                );
+
+                const newElement: CanvasElement = {
+                  id: Date.now().toString(),
+                  type: "image",
+                  x,
+                  y,
+                  width: img.width,
+                  height: img.height,
+                  content: url,
+                };
+
+                setElements((prev) => [...prev, newElement]);
+              } else {
+                // Grid mode: Create 4×3 grid at screen center
+                const canvasPos = screenToCanvas(
+                  window.innerWidth / 2,
+                  window.innerHeight / 2
+                );
+                const cols = 4;
+                const rows = 3;
+                const spacing = 10;
+
+                for (let row = 0; row < rows; row++) {
+                  for (let col = 0; col < cols; col++) {
+                    const newElement: CanvasElement = {
+                      id: `${Date.now()}-${row}-${col}`,
+                      type: "image",
+                      x: canvasPos.x + col * (img.width + spacing),
+                      y: canvasPos.y + row * (img.height + spacing),
+                      width: img.width,
+                      height: img.height,
+                      content: url,
+                    };
+                    setElements((prev) => [...prev, newElement]);
+                  }
                 }
               }
             } else {
-              // Normal mode: add single image
+              // Normal mode: paste at cursor position (centered on cursor)
+              const cursorPos = screenToCanvas(
+                currentMousePos.current.x,
+                currentMousePos.current.y
+              );
+
               const newElement: CanvasElement = {
                 id: Date.now().toString(),
                 type: "image",
-                x: canvasPos.x,
-                y: canvasPos.y,
+                x: cursorPos.x - img.width / 2,
+                y: cursorPos.y - img.height / 2,
                 width: img.width,
                 height: img.height,
                 content: url,
@@ -210,7 +370,7 @@ export default function Canvas() {
         }
       }
     },
-    [screenToCanvas, tilingMode]
+    [screenToCanvas, tilingMode, selectedElement, elements, calculateAdjacentPosition]
   );
 
   // Add text element
@@ -270,14 +430,21 @@ export default function Canvas() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Track global mouse position for paste direction calculation
+    const trackMousePosition = (e: MouseEvent) => {
+      currentMousePos.current = { x: e.clientX, y: e.clientY };
+    };
+
     canvas.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousemove", trackMousePosition);
     window.addEventListener("mouseup", handleMouseUp);
     window.addEventListener("paste", handlePaste);
 
     return () => {
       canvas.removeEventListener("wheel", handleWheel);
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousemove", trackMousePosition);
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("paste", handlePaste);
     };
