@@ -165,6 +165,7 @@ export default function Canvas() {
   // Canvas state
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [history, setHistory] = useState<CanvasElement[][]>([]);
+  const [redoHistory, setRedoHistory] = useState<CanvasElement[][]>([]);
   const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
@@ -227,16 +228,27 @@ export default function Canvas() {
     setViewport({ x: 0, y: 0, zoom: 1 });
   };
 
-  // History tracking for undo
+  // History tracking for undo/redo
   const pushHistory = () => {
     setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+    setRedoHistory([]);
   };
 
   const undo = () => {
     if (history.length === 0) return;
+    setRedoHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
     const previous = history[history.length - 1];
     setHistory((prev) => prev.slice(0, -1));
     setElements(previous);
+    setSelectedElement(null);
+  };
+
+  const redo = () => {
+    if (redoHistory.length === 0) return;
+    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+    const next = redoHistory[redoHistory.length - 1];
+    setRedoHistory((prev) => prev.slice(0, -1));
+    setElements(next);
     setSelectedElement(null);
   };
 
@@ -325,6 +337,8 @@ export default function Canvas() {
       { key: 'Backspace', callback: deleteSelected, description: 'Delete selected element' },
       { key: 'Escape', callback: cancelPlacement, description: 'Cancel placement' },
       { key: 'z', ctrlOrMeta: true, callback: undo, description: 'Undo' },
+      { key: 'y', ctrlOrMeta: true, callback: redo, description: 'Redo' },
+      { key: 'z', ctrlOrMeta: true, shift: true, callback: redo, description: 'Redo' },
     ],
   });
 

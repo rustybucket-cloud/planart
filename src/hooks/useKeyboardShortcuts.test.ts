@@ -97,4 +97,24 @@ describe('useKeyboardShortcuts', () => {
     await userEvent.keyboard('{Control>}z{/Control}')
     expect(callback).not.toHaveBeenCalled()
   })
+
+  it('should trigger callback when shift modifier matches', async () => {
+    const callback = vi.fn()
+    const shortcuts = [{ key: 'z', ctrlOrMeta: true, shift: true, callback }]
+
+    renderHook(() => useKeyboardShortcuts({ shortcuts }))
+
+    await userEvent.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it('should not trigger shift shortcut without shift key', async () => {
+    const callback = vi.fn()
+    const shortcuts = [{ key: 'z', ctrlOrMeta: true, shift: true, callback }]
+
+    renderHook(() => useKeyboardShortcuts({ shortcuts }))
+
+    await userEvent.keyboard('{Control>}z{/Control}')
+    expect(callback).not.toHaveBeenCalled()
+  })
 })

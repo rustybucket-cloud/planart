@@ -5,6 +5,7 @@ export interface KeyboardShortcut {
   callback: () => void;
   description?: string;
   ctrlOrMeta?: boolean;
+  shift?: boolean;
 }
 
 interface UseKeyboardShortcutsOptions {
@@ -55,6 +56,8 @@ export function useKeyboardShortcuts({
         if (s.key !== e.key) return false;
         if (s.ctrlOrMeta && !(e.ctrlKey || e.metaKey)) return false;
         if (!s.ctrlOrMeta && (e.ctrlKey || e.metaKey)) return false;
+        if (s.shift && !e.shiftKey) return false;
+        if (!s.shift && e.shiftKey) return false;
         return true;
       });
       if (shortcut) {
