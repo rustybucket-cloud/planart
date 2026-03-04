@@ -49,7 +49,6 @@ export default function Canvas() {
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
-  const dragStartPos = useRef({ x: 0, y: 0 });
   const currentMousePos = useRef({ x: 0, y: 0 });
 
   // Zoom controls
