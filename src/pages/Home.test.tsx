@@ -3,7 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router'
 import Home from './Home'
 import { canvasApi } from '@/services/canvasApi'
+import { referenceCollectionApi } from '@/services/referenceCollectionApi'
 import type { CanvasSummary } from '@/types/canvas'
+import type { ReferenceCollectionSummary } from '@/types/referenceCollection'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router', async () => {
@@ -21,15 +23,28 @@ vi.mock('@/services/canvasApi', () => ({
   },
 }))
 
+vi.mock('@/services/referenceCollectionApi', () => ({
+  referenceCollectionApi: {
+    list: vi.fn(),
+    delete: vi.fn(),
+  },
+}))
+
 const mockCanvases: CanvasSummary[] = [
   { id: 'canvas-1', name: 'First Canvas', updatedAt: new Date().toISOString(), elementCount: 2 },
   { id: 'canvas-2', name: 'Second Canvas', updatedAt: new Date().toISOString(), elementCount: 0 },
+]
+
+const mockCollections: ReferenceCollectionSummary[] = [
+  { id: 'col-1', name: 'Color References', updatedAt: new Date().toISOString(), imageCount: 5 },
+  { id: 'col-2', name: 'Architecture Refs', updatedAt: new Date().toISOString(), imageCount: 0 },
 ]
 
 describe('Home Page', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
     vi.mocked(canvasApi.list).mockResolvedValue([])
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue([])
   })
 
   it('should render page title', async () => {
@@ -41,11 +56,14 @@ describe('Home Page', () => {
 
     expect(screen.getByText('Your Work')).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText(/0 canvases/)).toBeInTheDocument()
+      expect(screen.getByText(/0 items/)).toBeInTheDocument()
     })
   })
 
-  it('should display canvas count in header', async () => {
+  it('should display combined item count in header', async () => {
+    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue(mockCollections)
+
     render(
       <BrowserRouter>
         <Home />
@@ -53,7 +71,7 @@ describe('Home Page', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/0 canvases/)).toBeInTheDocument()
+      expect(screen.getByText(/4 items/)).toBeInTheDocument()
     })
   })
 
@@ -65,23 +83,74 @@ describe('Home Page', () => {
     )
 
     await waitFor(() => {
-      expect(screen.queryByText(/0 canvases/)).toBeInTheDocument()
+      expect(screen.getByText(/0 items/)).toBeInTheDocument()
     })
-    const searchInput = screen.getByPlaceholderText(/search canvases and projects/i)
+    const searchInput = screen.getByPlaceholderText(/search canvases and collections/i)
     expect(searchInput).toBeInTheDocument()
   })
 
-  it('should render New Canvas button', async () => {
+  it('should show create menu with canvas and collection options', async () => {
+    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue([])
+
     render(
       <BrowserRouter>
         <Home />
       </BrowserRouter>
     )
 
-    expect(screen.getByRole('button', { name: /new canvas/i })).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText(/0 canvases/)).toBeInTheDocument()
+      expect(screen.getByText('First Canvas')).toBeInTheDocument()
     })
+
+    const user = userEvent.setup()
+    const newButton = screen.getByRole('button', { name: /^new$/i })
+    await user.click(newButton)
+
+    expect(screen.getByText('New Canvas')).toBeInTheDocument()
+    expect(screen.getByText('New Collection')).toBeInTheDocument()
+  })
+
+  it('should navigate to /canvas/new when New Canvas is clicked', async () => {
+    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue([])
+
+    render(
+      <BrowserRouter>
+        <Home />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('First Canvas')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^new$/i }))
+    await user.click(screen.getByText('New Canvas'))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/canvas/new')
+  })
+
+  it('should navigate to /collection/new when New Collection is clicked', async () => {
+    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue([])
+
+    render(
+      <BrowserRouter>
+        <Home />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('First Canvas')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^new$/i }))
+    await user.click(screen.getByText('New Collection'))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/collection/new')
   })
 
   it('should render canvases from list', async () => {
@@ -99,11 +168,8 @@ describe('Home Page', () => {
     })
   })
 
-  it('should delete canvas when delete button is clicked and user confirms', async () => {
-    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
-    vi.mocked(canvasApi.delete).mockResolvedValue(undefined)
-    const confirmSpy = vi.fn().mockReturnValue(true)
-    vi.stubGlobal('confirm', confirmSpy)
+  it('should render collections from list', async () => {
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue(mockCollections)
 
     render(
       <BrowserRouter>
@@ -112,29 +178,30 @@ describe('Home Page', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('First Canvas')).toBeInTheDocument()
+      expect(screen.getByText('Color References')).toBeInTheDocument()
+      expect(screen.getByText('Architecture Refs')).toBeInTheDocument()
     })
-
-    const user = userEvent.setup()
-    const firstCanvasRow = screen.getByText('First Canvas').closest('div.group')
-    const deleteButton = firstCanvasRow!.querySelector('button')!
-    await user.click(deleteButton)
-
-    await waitFor(() => {
-      expect(canvasApi.delete).toHaveBeenCalledWith('canvas-1')
-    })
-    expect(screen.queryByText('First Canvas')).not.toBeInTheDocument()
-    expect(screen.getByText('Second Canvas')).toBeInTheDocument()
-
-    vi.unstubAllGlobals()
   })
 
-  it('should show error and keep canvas when delete fails', async () => {
+  it('should render both canvases and collections sections', async () => {
     vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
-    vi.mocked(canvasApi.delete).mockRejectedValue(new Error('Delete failed'))
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
-    const alertSpy = vi.fn()
-    vi.stubGlobal('alert', alertSpy)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue(mockCollections)
+
+    render(
+      <BrowserRouter>
+        <Home />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Your Canvases')).toBeInTheDocument()
+      expect(screen.getByText('Your Collections')).toBeInTheDocument()
+    })
+  })
+
+  it('should filter canvases and collections by search query', async () => {
+    vi.mocked(canvasApi.list).mockResolvedValue(mockCanvases)
+    vi.mocked(referenceCollectionApi.list).mockResolvedValue(mockCollections)
 
     render(
       <BrowserRouter>
@@ -147,15 +214,12 @@ describe('Home Page', () => {
     })
 
     const user = userEvent.setup()
-    const firstCanvasRow = screen.getByText('First Canvas').closest('div.group')
-    const deleteButton = firstCanvasRow!.querySelector('button')!
-    await user.click(deleteButton)
+    const searchInput = screen.getByPlaceholderText(/search/i)
+    await user.type(searchInput, 'Color')
 
-    await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith('Failed to delete canvas. Try again.')
-    })
-    expect(screen.getByText('First Canvas')).toBeInTheDocument()
-
-    vi.unstubAllGlobals()
+    expect(screen.queryByText('First Canvas')).not.toBeInTheDocument()
+    expect(screen.queryByText('Second Canvas')).not.toBeInTheDocument()
+    expect(screen.getByText('Color References')).toBeInTheDocument()
+    expect(screen.queryByText('Architecture Refs')).not.toBeInTheDocument()
   })
 })
