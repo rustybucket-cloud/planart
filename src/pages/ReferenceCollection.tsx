@@ -557,6 +557,7 @@ function CollectionHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          {!atLimit && <PasteHint />}
           <button
             onClick={onToggleUrl}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-terracotta/20 hover:border-terracotta/50 hover:bg-terracotta/10 transition-all duration-200 text-sm font-medium"
@@ -575,6 +576,19 @@ function CollectionHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+const isMac = navigator.platform.toUpperCase().includes("MAC");
+
+function PasteHint() {
+  return (
+    <span className="flex items-center gap-1.5 px-3 py-2.5 text-xs text-text-tertiary">
+      <kbd className="px-1.5 py-0.5 bg-terracotta/10 rounded text-terracotta font-mono text-xs">
+        {isMac ? "⌘" : "Ctrl"}+V
+      </kbd>
+      <span>to paste</span>
+    </span>
   );
 }
 
