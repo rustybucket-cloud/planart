@@ -61,6 +61,15 @@ The following Tauri commands are available:
 - `list_canvases()` - List all canvases
 - `delete_canvas(id)` - Delete a canvas
 
+## Tiling Mode
+
+When tiling mode is enabled via the toolbar toggle:
+
+- **Image placement**: New images are automatically placed adjacent to the selected element based on mouse direction (using `calculateAdjacentPosition`).
+- **Snap-on-drag**: Dragging an element snaps it to nearby elements' edges. Snapping occurs on both axes independently with a 15px threshold and 10px spacing gap. Snap targets include:
+  - Adjacent edges (left/right/top/bottom with spacing)
+  - Aligned edges (matching left-to-left, top-to-top, etc.)
+
 ## Related Files
 
 - `src/pages/Canvas.tsx` - Main canvas page UI and interaction orchestration

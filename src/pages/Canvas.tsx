@@ -300,11 +300,72 @@ export default function Canvas() {
     img.src = url;
 
     img.onload = () => {
-      setPendingImage({ url, width: img.width, height: img.height });
-      setPlacingObjectType("image");
+      if (tilingMode) {
+        placeImageWithTiling(url, img.width, img.height);
+      } else {
+        setPendingImage({ url, width: img.width, height: img.height });
+        setPlacingObjectType("image");
+      }
     };
 
     e.target.value = "";
+  }
+
+  function placeImageWithTiling(url: string, width: number, height: number) {
+    pushHistory();
+
+    const selectedEl = selectedElement ? elements.find((el) => el.id === selectedElement) : null;
+
+    if (selectedEl) {
+      const { x, y } = calculateAdjacentPosition(
+        selectedEl,
+        elements,
+        currentMousePos.current.x,
+        currentMousePos.current.y,
+        width,
+        height,
+        viewport
+      );
+
+      const newElement: CanvasElement = {
+        id: crypto.randomUUID(),
+        type: "image",
+        x,
+        y,
+        width,
+        height,
+        content: url,
+      };
+      setElements((prev) => [...prev, newElement]);
+      setSelectedElement(newElement.id);
+    } else {
+      const canvasPos = {
+        x: (window.innerWidth / 2 - viewport.x) / viewport.zoom,
+        y: (window.innerHeight / 2 - viewport.y) / viewport.zoom,
+      };
+      const cols = 4;
+      const rows = 3;
+      const spacing = 10;
+      let lastId = "";
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const id = crypto.randomUUID();
+          lastId = id;
+          const newElement: CanvasElement = {
+            id,
+            type: "image",
+            x: canvasPos.x + col * (width + spacing),
+            y: canvasPos.y + row * (height + spacing),
+            width,
+            height,
+            content: url,
+          };
+          setElements((prev) => [...prev, newElement]);
+        }
+      }
+      setSelectedElement(lastId);
+    }
   }
 
   useKeyboardShortcuts({
@@ -429,12 +490,21 @@ export default function Canvas() {
         pushHistory();
       }
 
-      const { viewport: currentViewport } = stateRef.current;
+      const { viewport: currentViewport, tilingMode: currentTilingMode, elements: currentElements } = stateRef.current;
       const dx = dxScreen / currentViewport.zoom;
       const dy = dyScreen / currentViewport.zoom;
 
+      let newX = startX + dx;
+      let newY = startY + dy;
+
+      if (currentTilingMode) {
+        const snapped = snapToTilePosition(newX, newY, element.width, element.height, elementId, currentElements);
+        newX = snapped.x;
+        newY = snapped.y;
+      }
+
       setElements((prev) =>
-        prev.map((el) => (el.id === elementId ? { ...el, x: startX + dx, y: startY + dy } : el))
+        prev.map((el) => (el.id === elementId ? { ...el, x: newX, y: newY } : el))
       );
     }
 
@@ -771,6 +841,114 @@ export default function Canvas() {
       />
     </div>
   );
+}
+
+const TILE_SPACING = 10;
+
+function snapToTilePosition(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  elementId: string,
+  allElements: CanvasElement[]
+): { x: number; y: number; snapped: boolean } {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+
+  // Find the element whose bounds the dragged element's center is inside (with padding)
+  let hoveredElement: CanvasElement | null = null;
+  let closestDist = Infinity;
+
+  for (const other of allElements) {
+    if (other.id === elementId) continue;
+
+    const padX = width * 0.3;
+    const padY = height * 0.3;
+
+    if (
+      centerX >= other.x - padX &&
+      centerX <= other.x + other.width + padX &&
+      centerY >= other.y - padY &&
+      centerY <= other.y + other.height + padY
+    ) {
+      const otherCenterX = other.x + other.width / 2;
+      const otherCenterY = other.y + other.height / 2;
+      const dist = Math.abs(centerX - otherCenterX) + Math.abs(centerY - otherCenterY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        hoveredElement = other;
+      }
+    }
+  }
+
+  if (!hoveredElement) {
+    return { x, y, snapped: false };
+  }
+
+  // Determine which side to snap to based on dragged center relative to hovered element center
+  const hCenterX = hoveredElement.x + hoveredElement.width / 2;
+  const hCenterY = hoveredElement.y + hoveredElement.height / 2;
+  const dx = centerX - hCenterX;
+  const dy = centerY - hCenterY;
+
+  // Normalize by element dimensions so the direction accounts for aspect ratio
+  const normDx = dx / (hoveredElement.width / 2 + width / 2);
+  const normDy = dy / (hoveredElement.height / 2 + height / 2);
+
+  let snapX: number;
+  let snapY: number;
+  let stepX = 0;
+  let stepY = 0;
+
+  if (Math.abs(normDx) > Math.abs(normDy)) {
+    // Horizontal snap
+    if (normDx > 0) {
+      snapX = hoveredElement.x + hoveredElement.width + TILE_SPACING;
+      stepX = width + TILE_SPACING;
+    } else {
+      snapX = hoveredElement.x - width - TILE_SPACING;
+      stepX = -(width + TILE_SPACING);
+    }
+    snapY = hoveredElement.y;
+  } else {
+    // Vertical snap
+    if (normDy > 0) {
+      snapY = hoveredElement.y + hoveredElement.height + TILE_SPACING;
+      stepY = height + TILE_SPACING;
+    } else {
+      snapY = hoveredElement.y - height - TILE_SPACING;
+      stepY = -(height + TILE_SPACING);
+    }
+    snapX = hoveredElement.x;
+  }
+
+  // Walk forward in the snap direction, jumping past each blocking element
+  const otherElements = allElements.filter((el) => el.id !== elementId);
+  const maxAttempts = 50;
+  const goingRight = stepX > 0;
+  const goingDown = stepY > 0;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const blocker = otherElements.find((el) =>
+      rectanglesOverlap(snapX, snapY, width, height, el.x, el.y, el.width, el.height)
+    );
+    if (!blocker) break;
+
+    // Jump just past the blocking element's far edge
+    if (stepX !== 0) {
+      snapX = goingRight
+        ? blocker.x + blocker.width + TILE_SPACING
+        : blocker.x - width - TILE_SPACING;
+    }
+    if (stepY !== 0) {
+      snapY = goingDown
+        ? blocker.y + blocker.height + TILE_SPACING
+        : blocker.y - height - TILE_SPACING;
+    }
+  }
+
+  return { x: snapX, y: snapY, snapped: true };
 }
 
 function rectanglesOverlap(
