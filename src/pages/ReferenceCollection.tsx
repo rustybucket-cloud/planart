@@ -5,6 +5,7 @@ import {
   Upload,
   Link,
   Plus,
+  Minus,
   Trash2,
   Loader2,
   ChevronLeft,
@@ -35,6 +36,9 @@ import {
 } from "@/components/ui/dialog";
 
 const IMAGE_SOFT_LIMIT = 100;
+const MIN_COLUMNS = 2;
+const MAX_COLUMNS = 8;
+const DEFAULT_COLUMNS = 4;
 
 export default function ReferenceCollection() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +58,7 @@ export default function ReferenceCollection() {
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState("");
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [columnCount, setColumnCount] = useState(DEFAULT_COLUMNS);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -248,6 +253,25 @@ export default function ReferenceCollection() {
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, [collection, addImage]);
+
+  // Keyboard +/- to change column count
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      if (isInput) return;
+
+      if (e.key === "=" || e.key === "+") {
+        setColumnCount((prev) => Math.min(MAX_COLUMNS, prev + 1));
+      } else if (e.key === "-" || e.key === "_") {
+        setColumnCount((prev) => Math.max(MIN_COLUMNS, prev - 1));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleDeleteImage = useCallback(
     (imageId: string) => {
@@ -457,11 +481,18 @@ export default function ReferenceCollection() {
             </button>
           </div>
         ) : (
-          <ImageGrid
-            images={filteredImages}
-            onImageClick={(index) => setLightboxIndex(index)}
-            onDeleteImage={handleDeleteImage}
-          />
+          <>
+            <ColumnControl
+              columnCount={columnCount}
+              onColumnCountChange={setColumnCount}
+            />
+            <ImageGrid
+              images={filteredImages}
+              columnCount={columnCount}
+              onImageClick={(index) => setLightboxIndex(index)}
+              onDeleteImage={handleDeleteImage}
+            />
+          </>
         )}
       </div>
 
@@ -744,6 +775,68 @@ function TagFilterBar({
   );
 }
 
+// --- Column Control ---
+
+function ColumnControl({
+  columnCount,
+  onColumnCountChange,
+}: {
+  columnCount: number;
+  onColumnCountChange: (count: number) => void;
+}) {
+  const controlRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = controlRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        onColumnCountChange(Math.min(MAX_COLUMNS, columnCount + 1));
+      } else if (e.deltaY > 0) {
+        onColumnCountChange(Math.max(MIN_COLUMNS, columnCount - 1));
+      }
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [columnCount, onColumnCountChange]);
+
+  return (
+    <div className="flex justify-end mb-4">
+      <div
+        ref={controlRef}
+        className="flex items-center gap-1 select-none"
+      >
+        <button
+          onClick={() =>
+            onColumnCountChange(Math.max(MIN_COLUMNS, columnCount - 1))
+          }
+          disabled={columnCount <= MIN_COLUMNS}
+          className="p-1.5 rounded-lg hover:bg-terracotta/20 text-text-secondary hover:text-white transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Fewer columns"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <span className="w-6 text-center text-xs font-mono text-text-secondary tabular-nums">
+          {columnCount}
+        </span>
+        <button
+          onClick={() =>
+            onColumnCountChange(Math.min(MAX_COLUMNS, columnCount + 1))
+          }
+          disabled={columnCount >= MAX_COLUMNS}
+          className="p-1.5 rounded-lg hover:bg-terracotta/20 text-text-secondary hover:text-white transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="More columns"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- Empty State ---
 
 function EmptyState({ onUpload }: { onUpload: () => void }) {
@@ -776,15 +869,22 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 
 function ImageGrid({
   images,
+  columnCount,
   onImageClick,
   onDeleteImage,
 }: {
   images: ReferenceImage[];
+  columnCount: number;
   onImageClick: (index: number) => void;
   onDeleteImage: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div
+      className="grid gap-4"
+      style={{
+        gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+      }}
+    >
       {images.map((image, index) => (
         <ImageTile
           key={image.id}

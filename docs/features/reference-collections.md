@@ -24,10 +24,19 @@ Collections have a soft limit of 100 images:
 ## Image Grid
 
 Images are displayed in a uniform (non-masonry) grid layout:
-- Responsive columns: 2 → 3 → 4 → 5 based on viewport width
+- User-adjustable column count (2-8), defaults to 4
 - Chronological order by add date (no drag-to-reorder)
 - Hover effects: slight scale-up, overlay, delete button appears
 - Metadata indicators: note icon and tag count badges on tiles
+
+### Column Control
+
+A column count control appears above the image grid (right-aligned) when images are visible:
+- **+/- buttons**: Click to increment/decrement columns (range: 2-8)
+- **Scroll wheel**: Hover over the control and scroll to adjust columns
+- **Keyboard shortcuts**: Press `+`/`=` to add columns, `-`/`_` to remove columns (disabled when typing in inputs)
+- Buttons are disabled at min/max bounds
+- Column count is session-only (resets to 4 on page load)
 
 ### Tag Filtering
 

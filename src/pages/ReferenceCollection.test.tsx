@@ -503,4 +503,140 @@ describe("ReferenceCollection Page", () => {
       });
     });
   });
+
+  describe("Column Control", () => {
+    it("should show column control with default value of 4", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      // Column control should display default column count
+      expect(screen.getByText("4")).toBeInTheDocument();
+      expect(screen.getByLabelText("Fewer columns")).toBeInTheDocument();
+      expect(screen.getByLabelText("More columns")).toBeInTheDocument();
+    });
+
+    it("should increase column count when + button is clicked", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByLabelText("More columns"));
+
+      expect(screen.getByText("5")).toBeInTheDocument();
+    });
+
+    it("should decrease column count when - button is clicked", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByLabelText("Fewer columns"));
+
+      expect(screen.getByText("3")).toBeInTheDocument();
+    });
+
+    it("should disable - button at minimum columns (2)", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+
+      // Click minus twice to get to 2 (from default 4)
+      await user.click(screen.getByLabelText("Fewer columns"));
+      await user.click(screen.getByLabelText("Fewer columns"));
+
+      expect(screen.getByText("2")).toBeInTheDocument();
+      expect(screen.getByLabelText("Fewer columns")).toBeDisabled();
+    });
+
+    it("should disable + button at maximum columns (8)", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+
+      // Click plus 4 times to get to 8 (from default 4)
+      await user.click(screen.getByLabelText("More columns"));
+      await user.click(screen.getByLabelText("More columns"));
+      await user.click(screen.getByLabelText("More columns"));
+      await user.click(screen.getByLabelText("More columns"));
+
+      expect(screen.getByText("8")).toBeInTheDocument();
+      expect(screen.getByLabelText("More columns")).toBeDisabled();
+    });
+
+    it("should change column count with keyboard + and - keys", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+
+      // Press + to increase
+      await user.keyboard("=");
+      expect(screen.getByText("5")).toBeInTheDocument();
+
+      // Press - to decrease
+      await user.keyboard("-");
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
+
+    it("should apply column count to grid style", async () => {
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Collection")).toBeInTheDocument();
+      });
+
+      // The grid should have the correct style for 4 columns
+      const images = screen.getAllByRole("img");
+      const grid = images[0].closest(".grid");
+      expect(grid).toHaveStyle({
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+      });
+
+      // Change to 5 columns and verify
+      const user = userEvent.setup();
+      await user.click(screen.getByLabelText("More columns"));
+
+      expect(grid).toHaveStyle({
+        gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+      });
+    });
+
+    it("should not show column control when collection is empty", async () => {
+      vi.mocked(referenceCollectionApi.load).mockResolvedValue({
+        ...mockCollection,
+        images: [],
+      });
+
+      renderWithRoute("test-col-1");
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("No reference images yet")
+        ).toBeInTheDocument();
+      });
+
+      expect(screen.queryByLabelText("Fewer columns")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("More columns")).not.toBeInTheDocument();
+    });
+  });
 });
