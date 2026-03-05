@@ -58,6 +58,7 @@ interface PendingImage {
 
 interface ResizeState {
   elementId: string;
+  elementType: "image" | "text";
   corner: ResizeCorner;
   startX: number;
   startY: number;
@@ -88,8 +89,15 @@ const TEXT_SIZE_CONFIG: Record<TextSize, { label: string; fontSize: number }> = 
 
 const TEXT_SIZES: TextSize[] = ["xs", "sm", "md", "lg", "xl"];
 
+const DEFAULT_TEXT_WIDTH = 200;
+
 function getTextFontSize(textSize?: TextSize): number {
   return TEXT_SIZE_CONFIG[textSize ?? "md"].fontSize;
+}
+
+function getScaledTextFontSize(textSize: TextSize | undefined, elementWidth: number): number {
+  const baseFontSize = getTextFontSize(textSize);
+  return baseFontSize * (elementWidth / DEFAULT_TEXT_WIDTH);
 }
 
 const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
@@ -344,6 +352,7 @@ export default function Canvas() {
     pushHistory();
     pendingResize.current = {
       elementId,
+      elementType: element.type,
       corner,
       startX: e.clientX,
       startY: e.clientY,
@@ -698,7 +707,8 @@ export default function Canvas() {
 
         const dx = (e.clientX - startX) / viewport.zoom;
         const dy = (e.clientY - resizingElement.startY) / viewport.zoom;
-        const maintainAspect = !e.shiftKey;
+        const isImage = resizingElement.elementType === "image";
+        const maintainAspect = isImage ? !e.shiftKey : e.shiftKey;
 
         let newWidth = startWidth;
         let newHeight = startHeight;
@@ -1628,12 +1638,12 @@ function CanvasElementsLayer({
                   )}
                 </>
               ) : editingElementId === element.id ? (
-                <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
+                <div className="w-full h-full rounded-lg p-2">
                   <textarea
                     autoFocus
                     defaultValue={element.content === "Double-click to edit" ? "" : element.content}
                     className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.textSize)}px` }}
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getScaledTextFontSize(element.textSize, element.width)}px` }}
                     onBlur={(e) => onTextEditSave(element.id, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -1646,16 +1656,52 @@ function CanvasElementsLayer({
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                   />
+                  {selectedElement === element.id && (
+                    <>
+                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                        <div
+                          key={corner}
+                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                          style={{
+                            cursor: HANDLE_CONFIGS[corner].cursor,
+                            ...HANDLE_CONFIGS[corner].position,
+                          }}
+                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                        />
+                      ))}
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
-                  <p
-                    className="text-center break-words"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.textSize)}px` }}
-                  >
-                    {element.content}
-                  </p>
-                </div>
+                <>
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <p
+                      className="text-center break-words"
+                      style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getScaledTextFontSize(element.textSize, element.width)}px` }}
+                    >
+                      {element.content}
+                    </p>
+                  </div>
+                  {selectedElement === element.id && (
+                    <>
+                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                        <div
+                          key={corner}
+                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                          style={{
+                            cursor: HANDLE_CONFIGS[corner].cursor,
+                            ...HANDLE_CONFIGS[corner].position,
+                          }}
+                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
               )}
             </div>
           </ContextMenuTrigger>
@@ -1706,7 +1752,7 @@ function CanvasElementsLayer({
             height: 60,
           }}
         >
-          <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+          <div className="w-full h-full flex items-center justify-center p-4">
             <p
               className="text-center text-text-secondary"
               style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
