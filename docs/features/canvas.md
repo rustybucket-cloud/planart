@@ -99,6 +99,23 @@ The canvas can be exported as a PNG image via the Export button in the header:
 - **File naming**: The default filename is based on the canvas name with special characters replaced by underscores.
 - **Tauri plugins**: Uses `@tauri-apps/plugin-dialog` for the save dialog and `@tauri-apps/plugin-fs` for writing the file.
 
+## Keyboard Shortcuts
+
+The canvas supports the following keyboard shortcuts (disabled when typing in text inputs):
+
+| Key | Action |
+|-----|--------|
+| `T` | Toggle text placement mode |
+| `G` | Toggle tile mode |
+| `+` / `=` | Zoom in |
+| `-` | Zoom out |
+| `0` | Reset zoom |
+| `Delete` / `Backspace` | Delete selected element(s) |
+| `Escape` | Cancel placement or clear selection |
+| `Ctrl/Cmd + Z` | Undo |
+| `Ctrl/Cmd + Y` | Redo |
+| `Ctrl/Cmd + Shift + Z` | Redo |
+
 ## Related Files
 
 - `src/pages/Canvas.tsx` - Main canvas page UI and interaction orchestration

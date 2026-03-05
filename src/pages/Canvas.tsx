@@ -536,6 +536,8 @@ export default function Canvas() {
       { key: "z", ctrlOrMeta: true, callback: undo, description: "Undo" },
       { key: "y", ctrlOrMeta: true, callback: redo, description: "Redo" },
       { key: "z", ctrlOrMeta: true, shift: true, callback: redo, description: "Redo" },
+      { key: "t", callback: () => setPlacingObjectType((prev) => (prev === "text" ? null : "text")), description: "Create text" },
+      { key: "g", callback: () => setTilingMode((prev) => !prev), description: "Toggle tile mode" },
     ],
   });
 
