@@ -683,7 +683,7 @@ export default function Canvas() {
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("paste", handlePaste);
     };
-  }, []);
+  }, [isLoading]);
 
   if (isLoading) {
     return (
