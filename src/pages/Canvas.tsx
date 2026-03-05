@@ -37,7 +37,7 @@ import {
   isBlobUrl,
   isBase64,
 } from "@/lib/imageUtils";
-import type { CanvasElement, ViewportState, TextSize } from "@/types/canvas";
+import type { CanvasElement, ViewportState } from "@/types/canvas";
 import { createNewCanvasStartedRef, pendingNewCanvasIdRef } from "./canvasNewRefState";
 
 // Configuration
@@ -48,7 +48,7 @@ const FLOATING_PANEL_CLASS =
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type PlacementObjectType = "text" | "image" | null;
-type ResizeCorner = "nw" | "ne" | "sw" | "se";
+type ResizeHandle = "nw" | "ne" | "sw" | "se" | "n" | "e" | "s" | "w";
 
 interface PendingImage {
   url: string;
@@ -59,7 +59,7 @@ interface PendingImage {
 interface ResizeState {
   elementId: string;
   elementType: "image" | "text";
-  corner: ResizeCorner;
+  handle: ResizeHandle;
   startX: number;
   startY: number;
   startWidth: number;
@@ -67,6 +67,7 @@ interface ResizeState {
   startElementX: number;
   startElementY: number;
   aspectRatio: number;
+  startFontScale: number;
 }
 
 interface BoxSelectState {
@@ -78,33 +79,33 @@ interface BoxSelectState {
 
 const MIN_SIZE = 20;
 const RESIZE_THRESHOLD = 5;
+const BASE_FONT_SIZE = 18;
+const SCALE_TOLERANCE = 0.02;
 
-const TEXT_SIZE_CONFIG: Record<TextSize, { label: string; fontSize: number }> = {
-  xs: { label: "XS", fontSize: 12 },
-  sm: { label: "SM", fontSize: 14 },
-  md: { label: "MD", fontSize: 18 },
-  lg: { label: "LG", fontSize: 28 },
-  xl: { label: "XL", fontSize: 40 },
-};
+const FONT_SCALE_PRESETS = [
+  { key: "xs", label: "XS", scale: 0.67 },
+  { key: "sm", label: "SM", scale: 0.78 },
+  { key: "md", label: "MD", scale: 1.0 },
+  { key: "lg", label: "LG", scale: 1.56 },
+  { key: "xl", label: "XL", scale: 2.22 },
+];
 
-const TEXT_SIZES: TextSize[] = ["xs", "sm", "md", "lg", "xl"];
-
-const DEFAULT_TEXT_WIDTH = 200;
-
-function getTextFontSize(textSize?: TextSize): number {
-  return TEXT_SIZE_CONFIG[textSize ?? "md"].fontSize;
+function getTextFontSize(fontScale: number = 1): number {
+  return BASE_FONT_SIZE * fontScale;
 }
 
-function getScaledTextFontSize(textSize: TextSize | undefined, elementWidth: number): number {
-  const baseFontSize = getTextFontSize(textSize);
-  return baseFontSize * (elementWidth / DEFAULT_TEXT_WIDTH);
-}
+const CORNER_HANDLES: ResizeHandle[] = ["nw", "ne", "sw", "se"];
+const EDGE_HANDLES: ResizeHandle[] = ["n", "e", "s", "w"];
 
-const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
+const HANDLE_CONFIGS: Record<ResizeHandle, { cursor: string; position: React.CSSProperties }> = {
   nw: { cursor: "nwse-resize", position: { top: -6, left: -6 } },
   ne: { cursor: "nesw-resize", position: { top: -6, right: -6 } },
   sw: { cursor: "nesw-resize", position: { bottom: -6, left: -6 } },
   se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
+  n: { cursor: "ns-resize", position: { top: -6, left: "50%", transform: "translateX(-50%)" } },
+  s: { cursor: "ns-resize", position: { bottom: -6, left: "50%", transform: "translateX(-50%)" } },
+  e: { cursor: "ew-resize", position: { right: -6, top: "50%", transform: "translateY(-50%)" } },
+  w: { cursor: "ew-resize", position: { left: -6, top: "50%", transform: "translateY(-50%)" } },
 };
 
 export default function Canvas() {
@@ -301,10 +302,10 @@ export default function Canvas() {
     }
   }
 
-  function setTextSize(elementId: string, size: TextSize) {
+  function setElementFontScale(elementId: string, scale: number) {
     pushHistory();
     setElements((prev) =>
-      prev.map((el) => (el.id === elementId ? { ...el, textSize: size } : el))
+      prev.map((el) => (el.id === elementId ? { ...el, fontScale: scale } : el))
     );
   }
 
@@ -342,7 +343,7 @@ export default function Canvas() {
     setPendingImage(null);
   }
 
-  function handleResizeStart(e: React.MouseEvent, elementId: string, corner: ResizeCorner) {
+  function handleResizeStart(e: React.MouseEvent, elementId: string, handle: ResizeHandle) {
     e.stopPropagation();
     e.preventDefault();
 
@@ -353,7 +354,7 @@ export default function Canvas() {
     pendingResize.current = {
       elementId,
       elementType: element.type,
-      corner,
+      handle,
       startX: e.clientX,
       startY: e.clientY,
       startWidth: element.width,
@@ -361,6 +362,7 @@ export default function Canvas() {
       startElementX: element.x,
       startElementY: element.y,
       aspectRatio: element.width / element.height,
+      startFontScale: element.fontScale ?? 1,
     };
 
     lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -696,26 +698,34 @@ export default function Canvas() {
       if (resizingElement) {
         const {
           elementId,
-          corner,
+          handle,
           startX,
           startWidth,
           startHeight,
           startElementX,
           startElementY,
           aspectRatio,
+          startFontScale,
         } = resizingElement;
 
         const dx = (e.clientX - startX) / viewport.zoom;
         const dy = (e.clientY - resizingElement.startY) / viewport.zoom;
         const isImage = resizingElement.elementType === "image";
-        const maintainAspect = isImage ? !e.shiftKey : e.shiftKey;
+        const isText = resizingElement.elementType === "text";
+        const isCornerHandle = ["nw", "ne", "sw", "se"].includes(handle);
+
+        // For images: maintain aspect by default, shift to free resize
+        // For text corners: always maintain aspect (scaling text)
+        // For text edges: free resize (container only)
+        const maintainAspect = isImage ? !e.shiftKey : isCornerHandle;
 
         let newWidth = startWidth;
         let newHeight = startHeight;
         let newX = startElementX;
         let newY = startElementY;
+        let newFontScale = startFontScale;
 
-        switch (corner) {
+        switch (handle) {
           case "se":
             newWidth = Math.max(MIN_SIZE, startWidth + dx);
             newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
@@ -736,11 +746,33 @@ export default function Canvas() {
             newX = startElementX + startWidth - newWidth;
             newY = startElementY + startHeight - newHeight;
             break;
+          case "e":
+            newWidth = Math.max(MIN_SIZE, startWidth + dx);
+            break;
+          case "w":
+            newWidth = Math.max(MIN_SIZE, startWidth - dx);
+            newX = startElementX + startWidth - newWidth;
+            break;
+          case "s":
+            newHeight = Math.max(MIN_SIZE, startHeight + dy);
+            break;
+          case "n":
+            newHeight = Math.max(MIN_SIZE, startHeight - dy);
+            newY = startElementY + startHeight - newHeight;
+            break;
+        }
+
+        // For text elements with corner handles, scale the font proportionally
+        if (isText && isCornerHandle) {
+          const scaleFactor = newWidth / startWidth;
+          newFontScale = startFontScale * scaleFactor;
         }
 
         setElements((prev) =>
           prev.map((el) =>
-            el.id === elementId ? { ...el, x: newX, y: newY, width: newWidth, height: newHeight } : el
+            el.id === elementId
+              ? { ...el, x: newX, y: newY, width: newWidth, height: newHeight, fontScale: newFontScale }
+              : el
           )
         );
       } else if (isPanning) {
@@ -969,7 +1001,7 @@ export default function Canvas() {
           `,
           backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
           backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.corner].cursor : undefined,
+          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.handle].cursor : undefined,
         }}
         onMouseDown={handleMouseDown}
       >
@@ -994,7 +1026,7 @@ export default function Canvas() {
             onDuplicateElement={duplicateElement}
             onTextEditSave={handleTextEditSave}
             onTextEditCancel={handleTextEditCancel}
-            onSetTextSize={setTextSize}
+            onSetFontScale={setElementFontScale}
           />
         </div>
 
@@ -1565,12 +1597,12 @@ interface CanvasElementsLayerProps {
   pendingImage: PendingImage | null;
   onElementMouseDown: (e: React.MouseEvent, elementId: string) => void;
   onTextDoubleClick: (element: CanvasElement) => void;
-  onResizeStart: (e: React.MouseEvent, elementId: string, corner: ResizeCorner) => void;
+  onResizeStart: (e: React.MouseEvent, elementId: string, handle: ResizeHandle) => void;
   onDeleteElement: (elementId: string) => void;
   onDuplicateElement: (elementId: string) => void;
   onTextEditSave: (elementId: string, value: string) => void;
   onTextEditCancel: () => void;
-  onSetTextSize: (elementId: string, size: TextSize) => void;
+  onSetFontScale: (elementId: string, scale: number) => void;
 }
 
 function CanvasElementsLayer({
@@ -1588,7 +1620,7 @@ function CanvasElementsLayer({
   onDuplicateElement,
   onTextEditSave,
   onTextEditCancel,
-  onSetTextSize,
+  onSetFontScale,
 }: CanvasElementsLayerProps) {
   return (
     <>
@@ -1621,17 +1653,17 @@ function CanvasElementsLayer({
                   />
                   {selectedElement === element.id && (
                     <>
-                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                      {CORNER_HANDLES.map((handle) => (
                         <div
-                          key={corner}
+                          key={handle}
                           className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
                                      shadow-md shadow-black/30 z-10
                                      transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
                           style={{
-                            cursor: HANDLE_CONFIGS[corner].cursor,
-                            ...HANDLE_CONFIGS[corner].position,
+                            cursor: HANDLE_CONFIGS[handle].cursor,
+                            ...HANDLE_CONFIGS[handle].position,
                           }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
                         />
                       ))}
                     </>
@@ -1643,7 +1675,7 @@ function CanvasElementsLayer({
                     autoFocus
                     defaultValue={element.content === "Double-click to edit" ? "" : element.content}
                     className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getScaledTextFontSize(element.textSize, element.width)}px` }}
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
                     onBlur={(e) => onTextEditSave(element.id, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -1658,17 +1690,32 @@ function CanvasElementsLayer({
                   />
                   {selectedElement === element.id && (
                     <>
-                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                      {/* Corner handles for scaling text */}
+                      {CORNER_HANDLES.map((handle) => (
                         <div
-                          key={corner}
+                          key={handle}
                           className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
                                      shadow-md shadow-black/30 z-10
                                      transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
                           style={{
-                            cursor: HANDLE_CONFIGS[corner].cursor,
-                            ...HANDLE_CONFIGS[corner].position,
+                            cursor: HANDLE_CONFIGS[handle].cursor,
+                            ...HANDLE_CONFIGS[handle].position,
                           }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                        />
+                      ))}
+                      {/* Edge handles for resizing container only */}
+                      {EDGE_HANDLES.map((handle) => (
+                        <div
+                          key={handle}
+                          className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-white"
+                          style={{
+                            cursor: HANDLE_CONFIGS[handle].cursor,
+                            ...HANDLE_CONFIGS[handle].position,
+                          }}
+                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
                         />
                       ))}
                     </>
@@ -1679,24 +1726,39 @@ function CanvasElementsLayer({
                   <div className="w-full h-full flex items-center justify-center p-4">
                     <p
                       className="text-center break-words"
-                      style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getScaledTextFontSize(element.textSize, element.width)}px` }}
+                      style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
                     >
                       {element.content}
                     </p>
                   </div>
                   {selectedElement === element.id && (
                     <>
-                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                      {/* Corner handles for scaling text */}
+                      {CORNER_HANDLES.map((handle) => (
                         <div
-                          key={corner}
+                          key={handle}
                           className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
                                      shadow-md shadow-black/30 z-10
                                      transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
                           style={{
-                            cursor: HANDLE_CONFIGS[corner].cursor,
-                            ...HANDLE_CONFIGS[corner].position,
+                            cursor: HANDLE_CONFIGS[handle].cursor,
+                            ...HANDLE_CONFIGS[handle].position,
                           }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                        />
+                      ))}
+                      {/* Edge handles for resizing container only */}
+                      {EDGE_HANDLES.map((handle) => (
+                        <div
+                          key={handle}
+                          className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-white"
+                          style={{
+                            cursor: HANDLE_CONFIGS[handle].cursor,
+                            ...HANDLE_CONFIGS[handle].position,
+                          }}
+                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
                         />
                       ))}
                     </>
@@ -1712,19 +1774,23 @@ function CanvasElementsLayer({
                   Text Size
                 </ContextMenuLabel>
                 <div className="flex gap-1 px-2 pb-1">
-                  {TEXT_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        (element.textSize ?? "md") === size
-                          ? "bg-terracotta text-white"
-                          : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
-                      }`}
-                      onClick={() => onSetTextSize(element.id, size)}
-                    >
-                      {TEXT_SIZE_CONFIG[size].label}
-                    </button>
-                  ))}
+                  {FONT_SCALE_PRESETS.map((preset) => {
+                    const currentScale = element.fontScale ?? 1;
+                    const isSelected = Math.abs(preset.scale - currentScale) < SCALE_TOLERANCE;
+                    return (
+                      <button
+                        key={preset.key}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          isSelected
+                            ? "bg-terracotta text-white"
+                            : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
+                        }`}
+                        onClick={() => onSetFontScale(element.id, preset.scale)}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <ContextMenuSeparator className="bg-terracotta/20" />
               </>

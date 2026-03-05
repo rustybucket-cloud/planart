@@ -1,5 +1,3 @@
-export type TextSize = "xs" | "sm" | "md" | "lg" | "xl";
-
 export interface CanvasElement {
   id: string;
   type: "image" | "text";
@@ -9,7 +7,7 @@ export interface CanvasElement {
   height: number;
   content: string;
   rotation?: number;
-  textSize?: TextSize;
+  fontScale?: number; // For text elements: scales the font size (default 1.0)
 }
 
 export interface ViewportState {
