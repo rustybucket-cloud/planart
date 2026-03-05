@@ -68,6 +68,13 @@ interface ResizeState {
   aspectRatio: number;
 }
 
+interface BoxSelectState {
+  startScreenX: number;
+  startScreenY: number;
+  currentScreenX: number;
+  currentScreenY: number;
+}
+
 const MIN_SIZE = 20;
 const RESIZE_THRESHOLD = 5;
 
@@ -120,6 +127,8 @@ export default function Canvas() {
 
   const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
   const pendingResize = useRef<ResizeState | null>(null);
+  const [selectedElements, setSelectedElements] = useState<string[]>([]);
+  const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
 
   useEffect(() => {
     async function loadCanvas() {
@@ -249,6 +258,7 @@ export default function Canvas() {
     setHistory((prev) => prev.slice(0, -1));
     setElements(previous);
     setSelectedElement(null);
+    setSelectedElements([]);
   }
 
   function redo() {
@@ -258,10 +268,17 @@ export default function Canvas() {
     setRedoHistory((prev) => prev.slice(0, -1));
     setElements(next);
     setSelectedElement(null);
+    setSelectedElements([]);
   }
 
   function deleteSelected() {
-    if (selectedElement) {
+    if (selectedElements.length > 0) {
+      pushHistory();
+      const toDelete = new Set(selectedElements);
+      setElements((prev) => prev.filter((el) => !toDelete.has(el.id)));
+      setSelectedElements([]);
+      setSelectedElement(null);
+    } else if (selectedElement) {
       pushHistory();
       setElements((prev) => prev.filter((el) => el.id !== selectedElement));
       setSelectedElement(null);
@@ -300,6 +317,15 @@ export default function Canvas() {
   }
 
   function cancelPlacement() {
+    if (boxSelect) {
+      setBoxSelect(null);
+      return;
+    }
+    if (selectedElements.length > 0) {
+      setSelectedElements([]);
+      setSelectedElement(null);
+      return;
+    }
     if (pendingImage) {
       URL.revokeObjectURL(pendingImage.url);
     }
@@ -437,7 +463,9 @@ export default function Canvas() {
     placingObjectType,
     tilingMode,
     selectedElement,
+    selectedElements,
     elements,
+    boxSelect,
   });
 
   useEffect(() => {
@@ -448,7 +476,9 @@ export default function Canvas() {
       placingObjectType,
       tilingMode,
       selectedElement,
+      selectedElements,
       elements,
+      boxSelect,
     };
   });
 
@@ -496,6 +526,20 @@ export default function Canvas() {
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       setIsPanning(true);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
+    } else if (e.button === 0 && !placingObjectType) {
+      setSelectedElement(null);
+      setSelectedElements([]);
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        setBoxSelect({
+          startScreenX: screenX,
+          startScreenY: screenY,
+          currentScreenX: screenX,
+          currentScreenY: screenY,
+        });
+      }
     }
   }
 
@@ -508,12 +552,24 @@ export default function Canvas() {
     const element = elements.find((el) => el.id === elementId);
     if (!element) return;
 
-    setSelectedElement(elementId);
+    const elementWidth = element.width;
+    const elementHeight = element.height;
+    const isInMultiSelection = selectedElements.includes(elementId);
+
+    if (!isInMultiSelection) {
+      setSelectedElement(elementId);
+      setSelectedElements([]);
+    }
+
+    const movingIds = isInMultiSelection ? [...selectedElements] : [elementId];
+    const startPositions = new Map<string, { x: number; y: number }>();
+    for (const mid of movingIds) {
+      const el = elements.find((e) => e.id === mid);
+      if (el) startPositions.set(mid, { x: el.x, y: el.y });
+    }
 
     const startClientX = e.clientX;
     const startClientY = e.clientY;
-    const startX = element.x;
-    const startY = element.y;
     let hasMoved = false;
 
     function handleMove(ev: MouseEvent) {
@@ -534,18 +590,29 @@ export default function Canvas() {
       const dx = dxScreen / currentViewport.zoom;
       const dy = dyScreen / currentViewport.zoom;
 
-      let newX = startX + dx;
-      let newY = startY + dy;
+      if (movingIds.length === 1) {
+        const startPos = startPositions.get(movingIds[0])!;
+        let newX = startPos.x + dx;
+        let newY = startPos.y + dy;
 
-      if (currentTilingMode) {
-        const snapped = snapToTilePosition(newX, newY, element.width, element.height, elementId, currentElements);
-        newX = snapped.x;
-        newY = snapped.y;
+        if (currentTilingMode) {
+          const snapped = snapToTilePosition(newX, newY, elementWidth, elementHeight, elementId, currentElements);
+          newX = snapped.x;
+          newY = snapped.y;
+        }
+
+        setElements((prev) =>
+          prev.map((el) => (el.id === movingIds[0] ? { ...el, x: newX, y: newY } : el))
+        );
+      } else {
+        setElements((prev) =>
+          prev.map((el) => {
+            const startPos = startPositions.get(el.id);
+            if (!startPos) return el;
+            return { ...el, x: startPos.x + dx, y: startPos.y + dy };
+          })
+        );
       }
-
-      setElements((prev) =>
-        prev.map((el) => (el.id === elementId ? { ...el, x: newX, y: newY } : el))
-      );
     }
 
     function handleUp() {
@@ -673,6 +740,18 @@ export default function Canvas() {
         lastMousePos.current = { x: e.clientX, y: e.clientY };
       }
 
+      const { boxSelect: currentBoxSelect } = stateRef.current;
+      if (currentBoxSelect) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          setBoxSelect({
+            ...currentBoxSelect,
+            currentScreenX: e.clientX - rect.left,
+            currentScreenY: e.clientY - rect.top,
+          });
+        }
+      }
+
       if (placingObjectType) {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (rect) {
@@ -689,6 +768,40 @@ export default function Canvas() {
       setIsPanning(false);
       setResizingElement(null);
       pendingResize.current = null;
+
+      const { boxSelect: currentBoxSelect, viewport: currentViewport, elements: currentElements } = stateRef.current;
+      if (currentBoxSelect) {
+        const x1 = Math.min(currentBoxSelect.startScreenX, currentBoxSelect.currentScreenX);
+        const y1 = Math.min(currentBoxSelect.startScreenY, currentBoxSelect.currentScreenY);
+        const x2 = Math.max(currentBoxSelect.startScreenX, currentBoxSelect.currentScreenX);
+        const y2 = Math.max(currentBoxSelect.startScreenY, currentBoxSelect.currentScreenY);
+
+        const canvasX1 = (x1 - currentViewport.x) / currentViewport.zoom;
+        const canvasY1 = (y1 - currentViewport.y) / currentViewport.zoom;
+        const canvasX2 = (x2 - currentViewport.x) / currentViewport.zoom;
+        const canvasY2 = (y2 - currentViewport.y) / currentViewport.zoom;
+
+        const boxWidth = canvasX2 - canvasX1;
+        const boxHeight = canvasY2 - canvasY1;
+
+        if (boxWidth > 5 || boxHeight > 5) {
+          const selected = currentElements
+            .filter((el) =>
+              rectanglesOverlap(canvasX1, canvasY1, boxWidth, boxHeight, el.x, el.y, el.width, el.height)
+            )
+            .map((el) => el.id);
+
+          if (selected.length === 1) {
+            setSelectedElement(selected[0]);
+            setSelectedElements([]);
+          } else if (selected.length > 1) {
+            setSelectedElement(null);
+            setSelectedElements(selected);
+          }
+        }
+
+        setBoxSelect(null);
+      }
     }
 
     async function handlePaste(e: ClipboardEvent) {
@@ -837,7 +950,7 @@ export default function Canvas() {
       <div
         ref={canvasRef}
         className={`fixed inset-0 top-[73px] select-none ${
-          resizingElement ? "" : placingObjectType ? "cursor-crosshair" : "cursor-move"
+          resizingElement ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
         }`}
         style={{
           backgroundImage: `
@@ -859,6 +972,7 @@ export default function Canvas() {
           <CanvasElementsLayer
             elements={elements}
             selectedElement={selectedElement}
+            selectedElements={selectedElements}
             editingElementId={editingElementId}
             placingObjectType={placingObjectType}
             previewPos={previewPos}
@@ -873,6 +987,18 @@ export default function Canvas() {
             onSetTextSize={setTextSize}
           />
         </div>
+
+        {boxSelect && (
+          <div
+            className="absolute pointer-events-none border-2 border-terracotta/60 bg-terracotta/10 rounded-sm"
+            style={{
+              left: Math.min(boxSelect.startScreenX, boxSelect.currentScreenX),
+              top: Math.min(boxSelect.startScreenY, boxSelect.currentScreenY),
+              width: Math.abs(boxSelect.currentScreenX - boxSelect.startScreenX),
+              height: Math.abs(boxSelect.currentScreenY - boxSelect.startScreenY),
+            }}
+          />
+        )}
       </div>
 
       <input
@@ -1422,6 +1548,7 @@ function CanvasEmptyState() {
 interface CanvasElementsLayerProps {
   elements: CanvasElement[];
   selectedElement: string | null;
+  selectedElements: string[];
   editingElementId: string | null;
   placingObjectType: PlacementObjectType;
   previewPos: { x: number; y: number } | null;
@@ -1439,6 +1566,7 @@ interface CanvasElementsLayerProps {
 function CanvasElementsLayer({
   elements,
   selectedElement,
+  selectedElements,
   editingElementId,
   placingObjectType,
   previewPos,
@@ -1459,7 +1587,7 @@ function CanvasElementsLayer({
           <ContextMenuTrigger asChild>
             <div
               className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-                selectedElement === element.id
+                selectedElement === element.id || selectedElements.includes(element.id)
                   ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
                   : "hover:ring-2 hover:ring-terracotta/50"
               }`}

@@ -104,7 +104,7 @@ describe('Canvas Page', () => {
 
       // Should exit placement mode
       const canvas = getCanvasArea()
-      expect(canvas?.className).toContain('cursor-move')
+      expect(canvas?.className).toContain('cursor-default')
       expect(canvas?.className).not.toContain('cursor-crosshair')
     })
 
@@ -471,7 +471,7 @@ describe('Canvas Page', () => {
 
       // Should exit placement mode
       canvas = getCanvasArea()
-      expect(canvas?.className).toContain('cursor-move')
+      expect(canvas?.className).toContain('cursor-default')
 
       globalThis.Image = originalImage
     })
@@ -659,6 +659,164 @@ describe('Canvas Page', () => {
         expect(canvasApi.create).toHaveBeenCalledTimes(1)
         expect(canvasApi.create).toHaveBeenCalledWith('Untitled Canvas')
       })
+    })
+  })
+
+  describe('Box Select', () => {
+    const canvasWithElements: CanvasData = {
+      id: 'test-canvas',
+      name: 'Test Canvas',
+      createdAt: '',
+      updatedAt: '',
+      viewport: { x: 0, y: 0, zoom: 1 },
+      elements: [
+        { id: 'el-1', type: 'text', x: 100, y: 100, width: 200, height: 60, content: 'Element One' },
+        { id: 'el-2', type: 'text', x: 400, y: 100, width: 200, height: 60, content: 'Element Two' },
+        { id: 'el-3', type: 'text', x: 100, y: 300, width: 200, height: 60, content: 'Element Three' },
+      ],
+    }
+
+    beforeEach(() => {
+      mockUseParams.mockReturnValue({ id: 'test-canvas' })
+      vi.mocked(canvasApi.load).mockResolvedValue(canvasWithElements)
+    })
+
+    it('should show box select rectangle while dragging on empty space', async () => {
+      await renderCanvas()
+
+      const canvas = getCanvasArea()
+
+      // Start box select by left-clicking on empty space
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 50, button: 0 })
+      })
+
+      // Move mouse to draw selection rectangle
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 350, clientY: 250 })
+      })
+
+      // Should render a selection rectangle
+      const selectionRect = canvas!.querySelector('.border-terracotta\\/60.bg-terracotta\\/10')
+      expect(selectionRect).toBeInTheDocument()
+    })
+
+    it('should select multiple elements within the box select area', async () => {
+      await renderCanvas()
+
+      const canvas = getCanvasArea()
+
+      // Box-select area covering el-1 and el-2 (both at y=100, x=100 and x=400)
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 50, button: 0 })
+      })
+
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 650, clientY: 200 })
+      })
+
+      await act(async () => {
+        fireEvent.mouseUp(window)
+      })
+
+      // Both elements should have selected style (ring-2 ring-terracotta)
+      const el1 = screen.getByText('Element One').closest('.absolute')
+      const el2 = screen.getByText('Element Two').closest('.absolute')
+
+      expect(el1?.className).toContain('ring-2 ring-terracotta')
+      expect(el2?.className).toContain('ring-2 ring-terracotta')
+    })
+
+    it('should clear selection when clicking on empty space', async () => {
+      await renderCanvas()
+
+      const canvas = getCanvasArea()
+
+      // First, select elements with box select
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 50, button: 0 })
+      })
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 650, clientY: 200 })
+      })
+      await act(async () => {
+        fireEvent.mouseUp(window)
+      })
+
+      // Verify elements are selected
+      const el1 = screen.getByText('Element One').closest('.absolute')
+      expect(el1?.className).toContain('ring-2 ring-terracotta')
+
+      // Click on empty space to deselect
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 500, button: 0 })
+      })
+      await act(async () => {
+        fireEvent.mouseUp(window)
+      })
+
+      // Elements should no longer be selected
+      expect(el1?.className).not.toContain('ring-2 ring-terracotta shadow-lg')
+    })
+
+    it('should delete all selected elements with Delete key', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvas = getCanvasArea()
+
+      // Box select el-1 and el-2
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 50, button: 0 })
+      })
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 650, clientY: 200 })
+      })
+      await act(async () => {
+        fireEvent.mouseUp(window)
+      })
+
+      // Verify both are selected
+      expect(screen.getByText('Element One')).toBeInTheDocument()
+      expect(screen.getByText('Element Two')).toBeInTheDocument()
+
+      // Press Delete
+      await user.keyboard('{Delete}')
+
+      // Both should be removed
+      await waitFor(() => {
+        expect(screen.queryByText('Element One')).not.toBeInTheDocument()
+        expect(screen.queryByText('Element Two')).not.toBeInTheDocument()
+      })
+
+      // Element Three should still exist
+      expect(screen.getByText('Element Three')).toBeInTheDocument()
+    })
+
+    it('should cancel box select with Escape', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvas = getCanvasArea()
+
+      // Start box select
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 50, clientY: 50, button: 0 })
+      })
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 350, clientY: 250 })
+      })
+
+      // Box select rect should be visible
+      let selectionRect = canvas!.querySelector('.border-terracotta\\/60.bg-terracotta\\/10')
+      expect(selectionRect).toBeInTheDocument()
+
+      // Press Escape
+      await user.keyboard('{Escape}')
+
+      // Box select rect should be gone
+      selectionRect = canvas!.querySelector('.border-terracotta\\/60.bg-terracotta\\/10')
+      expect(selectionRect).not.toBeInTheDocument()
     })
   })
 })

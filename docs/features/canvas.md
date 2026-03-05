@@ -70,6 +70,18 @@ When tiling mode is enabled via the toolbar toggle:
   - Adjacent edges (left/right/top/bottom with spacing)
   - Aligned edges (matching left-to-left, top-to-top, etc.)
 
+## Box Select (Multi-Selection)
+
+When no placement tool is active, left-clicking and dragging on empty canvas space draws a selection rectangle:
+
+- **Visual feedback**: A semi-transparent terracotta-tinted rectangle is drawn during the drag.
+- **Selection**: On mouse-up, all elements that overlap the selection rectangle become selected (highlighted with the terracotta ring).
+- **Single vs multi**: If only one element is captured, it becomes the single selected element. If multiple are captured, they enter multi-selection mode.
+- **Multi-select drag**: Clicking and dragging any element within a multi-selection moves all selected elements together.
+- **Delete**: Pressing Delete/Backspace removes all selected elements at once.
+- **Deselect**: Clicking on empty space or pressing Escape clears the selection.
+- **Tiling mode**: Tiling snap is only applied when dragging a single element; multi-element drags move freely.
+
 ## Related Files
 
 - `src/pages/Canvas.tsx` - Main canvas page UI and interaction orchestration
