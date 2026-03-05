@@ -18,6 +18,18 @@ import { Button } from "@/components/ui/button";
 
 type ViewMode = "grid" | "list";
 
+type HomeItem =
+  | { type: "canvas"; id: string; name: string; updatedAt: string; elementCount: number }
+  | { type: "collection"; id: string; name: string; updatedAt: string; imageCount: number; thumbnailContent?: string };
+
+function toHomeItems(canvases: CanvasSummary[], collections: ReferenceCollectionSummary[]): HomeItem[] {
+  const items: HomeItem[] = [
+    ...canvases.map((c): HomeItem => ({ type: "canvas", ...c })),
+    ...collections.map((c): HomeItem => ({ type: "collection", ...c })),
+  ];
+  return items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
 function formatRelativeTime(isoDate: string): string {
   const date = new Date(isoDate);
   const now = new Date();
@@ -100,15 +112,12 @@ export default function Home() {
     }
   };
 
-  const filteredCanvases = canvases.filter((canvas) =>
-    canvas.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const allItems = toHomeItems(canvases, collections);
+  const filteredItems = allItems.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredCollections = collections.filter((collection) =>
-    collection.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const totalItems = canvases.length + collections.length;
+  const totalItems = allItems.length;
 
   return (
     <div className="h-screen bg-bg-deep text-white relative overflow-hidden flex flex-col">
@@ -250,36 +259,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* Canvases Section */}
-        {!isLoading && filteredCanvases.length > 0 && (
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-700 mb-12" style={{ animationDelay: '100ms' }}>
-          <div className="flex items-center gap-4 mb-6">
-            <FileImage className="w-7 h-7 text-terracotta" strokeWidth={2} />
-            <h2 className="text-3xl font-black tracking-tight">Your Canvases</h2>
-          </div>
-
-          {viewMode === "grid" ? (
-            <CanvasGrid canvases={filteredCanvases} onDelete={handleDeleteItem} />
+        {/* Items */}
+        {!isLoading && filteredItems.length > 0 && (
+          viewMode === "grid" ? (
+            <ItemGrid items={filteredItems} onDelete={handleDeleteItem} />
           ) : (
-            <CanvasList canvases={filteredCanvases} onDelete={handleDeleteItem} />
-          )}
-        </section>
-        )}
-
-        {/* Collections Section */}
-        {!isLoading && filteredCollections.length > 0 && (
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '200ms' }}>
-          <div className="flex items-center gap-4 mb-6">
-            <Images className="w-7 h-7 text-terracotta" strokeWidth={2} />
-            <h2 className="text-3xl font-black tracking-tight">Your Collections</h2>
-          </div>
-
-          {viewMode === "grid" ? (
-            <CollectionGrid collections={filteredCollections} onDelete={handleDeleteItem} />
-          ) : (
-            <CollectionList collections={filteredCollections} onDelete={handleDeleteItem} />
-          )}
-        </section>
+            <ItemList items={filteredItems} onDelete={handleDeleteItem} />
+          )
         )}
         </div>
       </div>
@@ -294,136 +280,54 @@ export default function Home() {
   );
 }
 
-// --- Canvas Grid / List ---
+// --- Unified Grid / List ---
 
-function CanvasGrid({
-  canvases,
+function ItemGrid({
+  items,
   onDelete,
 }: {
-  canvases: CanvasSummary[];
+  items: HomeItem[];
   onDelete: (e: React.MouseEvent, id: string, type: "canvas" | "collection", name: string) => void;
 }) {
   const navigate = useNavigate();
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-      {canvases.map((canvas, index) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
+      {items.map((item, index) => (
         <div
-          key={canvas.id}
-          onClick={() => navigate(`/canvas/${canvas.id}`)}
+          key={`${item.type}-${item.id}`}
+          onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
           className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
           style={{ animationDelay: `${200 + index * 80}ms` }}
         >
-          <div className={`aspect-video bg-gradient-to-br ${getGradientByIndex(index)} relative overflow-hidden`}>
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-              <div className="w-16 h-16 rounded-full bg-terracotta flex items-center justify-center shadow-lg">
-                <FileImage className="w-8 h-8 text-white" strokeWidth={2} />
-              </div>
-            </div>
-            <button
-              onClick={(e) => onDelete(e, canvas.id, "canvas", canvas.name)}
-              className="absolute top-2 right-2 z-10 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-            >
-              <Trash2 className="w-4 h-4 text-white" strokeWidth={2} />
-            </button>
-          </div>
-          <div className="p-5">
-            <h3 className="text-lg font-bold mb-1 group-hover:text-terracotta transition-colors truncate">
-              {canvas.name}
-            </h3>
-            <p className="text-sm text-text-secondary font-medium mb-1">
-              {canvas.elementCount} object{canvas.elementCount !== 1 ? "s" : ""}
-            </p>
-            <p className="text-xs text-text-secondary font-mono">
-              {formatRelativeTime(canvas.updatedAt)}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CanvasList({
-  canvases,
-  onDelete,
-}: {
-  canvases: CanvasSummary[];
-  onDelete: (e: React.MouseEvent, id: string, type: "canvas" | "collection", name: string) => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <div className="space-y-3">
-      {canvases.map((canvas, index) => (
-        <div
-          key={canvas.id}
-          onClick={() => navigate(`/canvas/${canvas.id}`)}
-          className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4"
-          style={{ animationDelay: `${200 + index * 60}ms` }}
-        >
-          <div className={`w-20 h-14 rounded-lg bg-gradient-to-br ${getGradientByIndex(index)} flex-shrink-0`} />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold truncate group-hover:text-terracotta transition-colors">
-              {canvas.name}
-            </h3>
-            <p className="text-sm text-text-secondary font-medium">
-              {canvas.elementCount} object{canvas.elementCount !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <p className="text-sm text-text-secondary font-mono flex-shrink-0">
-            {formatRelativeTime(canvas.updatedAt)}
-          </p>
-          <button
-            onClick={(e) => onDelete(e, canvas.id, "canvas", canvas.name)}
-            className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-          >
-            <Trash2 className="w-4 h-4" strokeWidth={2} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// --- Collection Grid / List ---
-
-function CollectionGrid({
-  collections,
-  onDelete,
-}: {
-  collections: ReferenceCollectionSummary[];
-  onDelete: (e: React.MouseEvent, id: string, type: "canvas" | "collection", name: string) => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-      {collections.map((collection, index) => (
-        <div
-          key={collection.id}
-          onClick={() => navigate(`/collection/${collection.id}`)}
-          className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
-          style={{ animationDelay: `${200 + index * 80}ms` }}
-        >
-          <div className="aspect-video relative overflow-hidden bg-bg-deep">
-            {collection.thumbnailContent ? (
-              <img
-                src={collection.thumbnailContent}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className={`w-full h-full bg-gradient-to-br ${getGradientByIndex(index + 3)} opacity-60 flex items-center justify-center`}>
+          <div className={`aspect-video relative overflow-hidden ${item.type === "collection" && item.thumbnailContent ? "bg-bg-deep" : `bg-gradient-to-br ${getGradientByIndex(index)}`}`}>
+            {item.type === "collection" && item.thumbnailContent ? (
+              <img src={item.thumbnailContent} alt="" className="w-full h-full object-cover" />
+            ) : item.type === "collection" ? (
+              <div className="w-full h-full flex items-center justify-center">
                 <Images className="w-12 h-12 text-white/60" strokeWidth={1.5} />
               </div>
-            )}
+            ) : null}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
               <div className="w-16 h-16 rounded-full bg-terracotta flex items-center justify-center shadow-lg">
-                <Images className="w-8 h-8 text-white" strokeWidth={2} />
+                {item.type === "canvas" ? (
+                  <FileImage className="w-8 h-8 text-white" strokeWidth={2} />
+                ) : (
+                  <Images className="w-8 h-8 text-white" strokeWidth={2} />
+                )}
               </div>
             </div>
+            {/* Type badge */}
+            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1 bg-black/50 backdrop-blur-sm rounded-lg text-xs font-medium text-white/80">
+              {item.type === "canvas" ? (
+                <FileImage className="w-3.5 h-3.5" strokeWidth={2} />
+              ) : (
+                <Images className="w-3.5 h-3.5" strokeWidth={2} />
+              )}
+              {item.type === "canvas" ? "Canvas" : "Collection"}
+            </div>
             <button
-              onClick={(e) => onDelete(e, collection.id, "collection", collection.name)}
+              onClick={(e) => onDelete(e, item.id, item.type, item.name)}
               className="absolute top-2 right-2 z-10 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
             >
               <Trash2 className="w-4 h-4 text-white" strokeWidth={2} />
@@ -431,13 +335,15 @@ function CollectionGrid({
           </div>
           <div className="p-5">
             <h3 className="text-lg font-bold mb-1 group-hover:text-terracotta transition-colors truncate">
-              {collection.name}
+              {item.name}
             </h3>
             <p className="text-sm text-text-secondary font-medium mb-1">
-              {collection.imageCount} image{collection.imageCount !== 1 ? "s" : ""}
+              {item.type === "canvas"
+                ? `${item.elementCount} object${item.elementCount !== 1 ? "s" : ""}`
+                : `${item.imageCount} image${item.imageCount !== 1 ? "s" : ""}`}
             </p>
             <p className="text-xs text-text-secondary font-mono">
-              {formatRelativeTime(collection.updatedAt)}
+              {formatRelativeTime(item.updatedAt)}
             </p>
           </div>
         </div>
@@ -446,49 +352,56 @@ function CollectionGrid({
   );
 }
 
-function CollectionList({
-  collections,
+function ItemList({
+  items,
   onDelete,
 }: {
-  collections: ReferenceCollectionSummary[];
+  items: HomeItem[];
   onDelete: (e: React.MouseEvent, id: string, type: "canvas" | "collection", name: string) => void;
 }) {
   const navigate = useNavigate();
   return (
-    <div className="space-y-3">
-      {collections.map((collection, index) => (
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
+      {items.map((item, index) => (
         <div
-          key={collection.id}
-          onClick={() => navigate(`/collection/${collection.id}`)}
+          key={`${item.type}-${item.id}`}
+          onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
           className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4"
           style={{ animationDelay: `${200 + index * 60}ms` }}
         >
-          <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0">
-            {collection.thumbnailContent ? (
-              <img
-                src={collection.thumbnailContent}
-                alt=""
-                className="w-full h-full object-cover"
-              />
+          <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 relative">
+            {item.type === "collection" && item.thumbnailContent ? (
+              <img src={item.thumbnailContent} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className={`w-full h-full bg-gradient-to-br ${getGradientByIndex(index + 3)} opacity-60 flex items-center justify-center`}>
-                <Images className="w-6 h-6 text-white/60" strokeWidth={1.5} />
+              <div className={`w-full h-full bg-gradient-to-br ${getGradientByIndex(index)} flex items-center justify-center`}>
+                {item.type === "collection" && (
+                  <Images className="w-6 h-6 text-white/60" strokeWidth={1.5} />
+                )}
               </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-text-secondary flex-shrink-0">
+            {item.type === "canvas" ? (
+              <FileImage className="w-4 h-4" strokeWidth={2} />
+            ) : (
+              <Images className="w-4 h-4" strokeWidth={2} />
             )}
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-bold truncate group-hover:text-terracotta transition-colors">
-              {collection.name}
+              {item.name}
             </h3>
             <p className="text-sm text-text-secondary font-medium">
-              {collection.imageCount} image{collection.imageCount !== 1 ? "s" : ""}
+              {item.type === "canvas"
+                ? `${item.elementCount} object${item.elementCount !== 1 ? "s" : ""}`
+                : `${item.imageCount} image${item.imageCount !== 1 ? "s" : ""}`}
             </p>
           </div>
           <p className="text-sm text-text-secondary font-mono flex-shrink-0">
-            {formatRelativeTime(collection.updatedAt)}
+            {formatRelativeTime(item.updatedAt)}
           </p>
           <button
-            onClick={(e) => onDelete(e, collection.id, "collection", collection.name)}
+            onClick={(e) => onDelete(e, item.id, item.type, item.name)}
             className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
           >
             <Trash2 className="w-4 h-4" strokeWidth={2} />
