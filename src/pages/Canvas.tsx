@@ -180,7 +180,6 @@ export default function Canvas() {
   const [redoHistory, setRedoHistory] = useState<CanvasElement[][]>([]);
   const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
   const [isPanning, setIsPanning] = useState(false);
-  const [draggedElement, setDraggedElement] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [tilingMode, setTilingMode] = useState(false);
   const [placingObjectType, setPlacingObjectType] = useState<"text" | "image" | null>(null);
@@ -198,8 +197,6 @@ export default function Canvas() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const currentMousePos = useRef({ x: 0, y: 0 });
-  const pendingDrag = useRef<{ elementId: string; startX: number; startY: number } | null>(null);
-  const DRAG_THRESHOLD = 5; // pixels before drag starts
 
   // Resize state
   type ResizeCorner = "nw" | "ne" | "sw" | "se";
@@ -477,7 +474,6 @@ export default function Canvas() {
   // Refs to store current state values for stable event handlers
   const stateRef = useRef({
     isPanning,
-    draggedElement,
     resizingElement,
     viewport,
     placingObjectType,
@@ -490,7 +486,6 @@ export default function Canvas() {
   useEffect(() => {
     stateRef.current = {
       isPanning,
-      draggedElement,
       resizingElement,
       viewport,
       placingObjectType,
@@ -552,16 +547,57 @@ export default function Canvas() {
   };
 
 
-  // Handle element drag start - uses threshold to allow double-clicks
+  // Handle element drag start - uses small movement threshold to allow double-clicks
   const handleElementMouseDown = (e: React.MouseEvent, elementId: string) => {
-    if (e.button === 0 && !e.shiftKey) {
-      e.stopPropagation();
-      // Don't start drag immediately - wait for mouse to move past threshold
-      pushHistory();
-      pendingDrag.current = { elementId, startX: e.clientX, startY: e.clientY };
-      setSelectedElement(elementId);
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
-    }
+    if (e.button !== 0 || e.shiftKey) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    setSelectedElement(elementId);
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const startX = element.x;
+    const startY = element.y;
+    let hasMoved = false;
+
+    const handleMove = (ev: MouseEvent) => {
+      const dxScreen = ev.clientX - startClientX;
+      const dyScreen = ev.clientY - startClientY;
+      const distance = Math.sqrt(dxScreen * dxScreen + dyScreen * dyScreen);
+
+      // Require a small threshold before starting a drag so clicks can still trigger double-click editing
+      if (!hasMoved && distance < 3) {
+        return;
+      }
+
+      if (!hasMoved) {
+        hasMoved = true;
+        pushHistory();
+      }
+
+      const { viewport: currentViewport } = stateRef.current;
+      const dx = dxScreen / currentViewport.zoom;
+      const dy = dyScreen / currentViewport.zoom;
+
+      setElements((prev) =>
+        prev.map((el) =>
+          el.id === elementId ? { ...el, x: startX + dx, y: startY + dy } : el
+        )
+      );
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
   };
 
   // Handle text editing - enter inline edit mode
@@ -617,21 +653,9 @@ export default function Canvas() {
       }
     };
 
-    // Handle mouse move for drag, resize, and pan
+    // Handle mouse move for resize, and pan
     const handleMouseMove = (e: MouseEvent) => {
-      const { isPanning, draggedElement, resizingElement, viewport, placingObjectType } = stateRef.current;
-
-      // Check if pending drag should become actual drag
-      if (pendingDrag.current && !draggedElement) {
-        const dx = e.clientX - pendingDrag.current.startX;
-        const dy = e.clientY - pendingDrag.current.startY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance >= DRAG_THRESHOLD) {
-          setDraggedElement(pendingDrag.current.elementId);
-          lastMousePos.current = { x: e.clientX, y: e.clientY };
-        }
-      }
+      const { isPanning, resizingElement, viewport, placingObjectType } = stateRef.current;
 
       // Check if pending resize should become actual resize
       if (pendingResize.current && !resizingElement) {
@@ -699,13 +723,6 @@ export default function Canvas() {
         const dy = e.clientY - lastMousePos.current.y;
         setViewport((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
         lastMousePos.current = { x: e.clientX, y: e.clientY };
-      } else if (draggedElement) {
-        const dx = (e.clientX - lastMousePos.current.x) / viewport.zoom;
-        const dy = (e.clientY - lastMousePos.current.y) / viewport.zoom;
-        setElements((prev) =>
-          prev.map((el) => (el.id === draggedElement ? { ...el, x: el.x + dx, y: el.y + dy } : el))
-        );
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
       }
 
       // Update preview position when in placement mode
@@ -724,9 +741,7 @@ export default function Canvas() {
     // Handle mouse up
     const handleMouseUp = () => {
       setIsPanning(false);
-      setDraggedElement(null);
       setResizingElement(null);
-      pendingDrag.current = null;
       pendingResize.current = null;
     };
 
@@ -1115,7 +1130,7 @@ export default function Canvas() {
                     height: element.height,
                     transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
                   }}
-                  onMouseDown={(e) => handleElementMouseDown(e, element.id)}
+                  onMouseDownCapture={(e) => handleElementMouseDown(e, element.id)}
                   onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
                 >
                   {element.type === "image" ? (

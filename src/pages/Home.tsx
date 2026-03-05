@@ -3,6 +3,16 @@ import { useNavigate } from "react-router";
 import { FileImage, Plus, Grid3x3, LayoutGrid, Search, Trash2, Loader2 } from "lucide-react";
 import { canvasApi } from "@/services/canvasApi";
 import type { CanvasSummary } from "@/types/canvas";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 
 type ViewMode = "grid" | "list";
 
@@ -39,6 +49,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [canvases, setCanvases] = useState<CanvasSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [canvasToDelete, setCanvasToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     canvasApi.list().then(setCanvases).finally(() => setIsLoading(false));
@@ -48,14 +60,23 @@ export default function Home() {
     navigate("/canvas/new");
   };
 
-  const handleDeleteCanvas = async (e: React.MouseEvent, canvasId: string) => {
+  const handleDeleteCanvas = (e: React.MouseEvent, canvasId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete this canvas?")) return;
+    setCanvasToDelete(canvasId);
+  };
+
+  const confirmDeleteCanvas = async () => {
+    if (!canvasToDelete) return;
+    setIsDeleting(true);
     try {
-      await canvasApi.delete(canvasId);
-      setCanvases((prev) => prev.filter((c) => c.id !== canvasId));
+      await canvasApi.delete(canvasToDelete);
+      setCanvases((prev) => prev.filter((c) => c.id !== canvasToDelete));
+      setCanvasToDelete(null);
     } catch (error) {
       console.error("Failed to delete canvas:", error);
+      alert("Failed to delete canvas. Try again.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -186,8 +207,8 @@ export default function Home() {
                 >
                   {/* Canvas Thumbnail */}
                   <div className={`aspect-video bg-gradient-to-br ${getGradientByIndex(index)} relative overflow-hidden`}>
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
                       <div className="w-16 h-16 rounded-full bg-terracotta flex items-center justify-center shadow-lg">
                         <FileImage className="w-8 h-8 text-white" strokeWidth={2} />
                       </div>
@@ -195,7 +216,7 @@ export default function Home() {
                     {/* Delete button */}
                     <button
                       onClick={(e) => handleDeleteCanvas(e, canvas.id)}
-                      className="absolute top-2 right-2 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                      className="absolute top-2 right-2 z-10 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                     >
                       <Trash2 className="w-4 h-4 text-white" strokeWidth={2} />
                     </button>
@@ -251,6 +272,38 @@ export default function Home() {
         )}
         </div>
       </div>
+
+      <AlertDialog open={canvasToDelete !== null} onOpenChange={(open) => !open && setCanvasToDelete(null)}>
+        <AlertDialogContent className="bg-bg-panel border-terracotta/20 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this canvas?</AlertDialogTitle>
+            <AlertDialogDescription className="text-text-secondary">
+              {canvasToDelete
+                ? `"${canvases.find((c) => c.id === canvasToDelete)?.name ?? "This canvas"}" will be permanently deleted. This cannot be undone.`
+                : "This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border border-terracotta/30 bg-bg-deep/80 text-white hover:bg-terracotta/20 hover:text-white">
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              onClick={confirmDeleteCanvas}
+              disabled={isDeleting}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
