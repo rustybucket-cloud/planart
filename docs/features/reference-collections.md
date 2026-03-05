@@ -29,6 +29,17 @@ Images are displayed in a uniform (non-masonry) grid layout:
 - Hover effects: slight scale-up, overlay, delete button appears
 - Metadata indicators: note icon and tag count badges on tiles
 
+### Tag Filtering
+
+A tag filter bar appears below the header when any images in the collection have tags:
+- Displays all unique tags across images as clickable chips, sorted alphabetically
+- Clicking a tag toggles it on/off. Active tags use terracotta highlight; inactive are subtle/ghost style
+- Uses AND logic: when multiple tags are selected, only images with ALL selected tags are shown
+- Shows "X of Y" count when a filter is active, plus a "Clear" button to reset
+- If no images match the active filter, a "No images match" message appears with a clear option
+- The lightbox navigates only the filtered image set when a filter is active
+- Hidden entirely when no images have tags
+
 ## Lightbox
 
 Clicking an image opens a full-screen lightbox dialog:

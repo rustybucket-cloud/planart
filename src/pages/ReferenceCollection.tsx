@@ -53,6 +53,7 @@ export default function ReferenceCollection() {
   const [urlError, setUrlError] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState("");
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const nameInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -254,20 +255,28 @@ export default function ReferenceCollection() {
         ...prev,
         images: prev.images.filter((img) => img.id !== imageId),
       }));
-      // Adjust lightbox index if open
-      setLightboxIndex((prevIdx) => {
-        if (prevIdx === null) return null;
-        if (!collection) return null;
-        const deletedIdx = collection.images.findIndex(
-          (img) => img.id === imageId
-        );
-        if (deletedIdx < prevIdx) return prevIdx - 1;
-        if (deletedIdx === prevIdx) return null;
-        return prevIdx;
-      });
     },
-    [updateCollection, collection]
+    [updateCollection]
   );
+
+  // Keep lightbox index in bounds when images change (e.g. deletion)
+  useEffect(() => {
+    if (lightboxIndex === null || !collection) return;
+    // We can't reference filteredImages here since it's derived after early returns,
+    // but the effect runs after render, so we recalculate.
+    const selTags = [...selectedTags];
+    const filtered =
+      selTags.length === 0
+        ? collection.images
+        : collection.images.filter((img) =>
+            selTags.every((tag) => img.tags.includes(tag))
+          );
+    if (filtered.length === 0) {
+      setLightboxIndex(null);
+    } else if (lightboxIndex >= filtered.length) {
+      setLightboxIndex(filtered.length - 1);
+    }
+  }, [collection, lightboxIndex, selectedTags]);
 
   const handleUpdateImageNote = useCallback(
     (imageId: string, note: string) => {
@@ -331,6 +340,38 @@ export default function ReferenceCollection() {
   const atLimit = collection.images.length >= IMAGE_SOFT_LIMIT;
   const nearLimit = collection.images.length >= IMAGE_SOFT_LIMIT - 10;
 
+  // Derive all unique tags across images (sorted alphabetically)
+  const allTags = [...new Set(collection.images.flatMap((img) => img.tags))].sort();
+
+  // Clean up selectedTags if tags were removed from all images
+  const activeSelectedTags = new Set(
+    [...selectedTags].filter((tag) => allTags.includes(tag))
+  );
+
+  // Filter images by selected tags (AND logic: image must have ALL selected tags)
+  const filteredImages =
+    activeSelectedTags.size === 0
+      ? collection.images
+      : collection.images.filter((img) =>
+          [...activeSelectedTags].every((tag) => img.tags.includes(tag))
+        );
+
+  const handleToggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) {
+        next.delete(tag);
+      } else {
+        next.add(tag);
+      }
+      return next;
+    });
+  };
+
+  const handleClearTagFilter = () => {
+    setSelectedTags(new Set());
+  };
+
   return (
     <div className="h-screen bg-bg-deep text-white flex flex-col overflow-hidden">
       <CollectionHeader
@@ -391,21 +432,42 @@ export default function ReferenceCollection() {
         </div>
       )}
 
+      <TagFilterBar
+        allTags={allTags}
+        selectedTags={activeSelectedTags}
+        onToggleTag={handleToggleTag}
+        onClear={handleClearTagFilter}
+        filteredCount={filteredImages.length}
+        totalCount={collection.images.length}
+      />
+
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {collection.images.length === 0 ? (
           <EmptyState onUpload={handleUpload} />
+        ) : filteredImages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full min-h-[200px] animate-in fade-in duration-300">
+            <p className="text-text-secondary text-sm">
+              No images match the selected tags
+            </p>
+            <button
+              onClick={handleClearTagFilter}
+              className="mt-3 text-xs text-terracotta hover:text-terracotta/80 transition-colors"
+            >
+              Clear filter
+            </button>
+          </div>
         ) : (
           <ImageGrid
-            images={collection.images}
+            images={filteredImages}
             onImageClick={(index) => setLightboxIndex(index)}
             onDeleteImage={handleDeleteImage}
           />
         )}
       </div>
 
-      {lightboxIndex !== null && collection.images[lightboxIndex] && (
+      {lightboxIndex !== null && filteredImages[lightboxIndex] && (
         <Lightbox
-          images={collection.images}
+          images={filteredImages}
           currentIndex={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
@@ -598,6 +660,72 @@ function UrlInputBar({
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+// --- Empty State ---
+
+// --- Tag Filter Bar ---
+
+function TagFilterBar({
+  allTags,
+  selectedTags,
+  onToggleTag,
+  onClear,
+  filteredCount,
+  totalCount,
+}: {
+  allTags: string[];
+  selectedTags: Set<string>;
+  onToggleTag: (tag: string) => void;
+  onClear: () => void;
+  filteredCount: number;
+  totalCount: number;
+}) {
+  if (allTags.length === 0) return null;
+
+  const hasActiveFilter = selectedTags.size > 0;
+
+  return (
+    <div className="px-8 py-3 border-b border-terracotta/10 animate-in fade-in duration-200">
+      <div className="flex items-center gap-3 max-w-[1800px] mx-auto">
+        <Tag className="w-4 h-4 text-text-secondary flex-shrink-0" />
+
+        <div className="flex-1 flex items-center gap-2 overflow-x-auto">
+          {allTags.map((tag) => {
+            const isActive = selectedTags.has(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => onToggleTag(tag)}
+                className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
+                  isActive
+                    ? "bg-terracotta/20 border-terracotta/50 text-terracotta"
+                    : "bg-bg-panel/60 border-terracotta/20 text-text-secondary hover:border-terracotta/40 hover:text-text-primary"
+                }`}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+
+        {hasActiveFilter && (
+          <div className="flex items-center gap-3 flex-shrink-0 animate-in fade-in duration-200">
+            <span className="text-xs text-text-secondary font-mono">
+              {filteredCount} of {totalCount}
+            </span>
+            <button
+              onClick={onClear}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-text-secondary hover:text-white hover:bg-terracotta/20 transition-colors duration-200"
+            >
+              <X className="w-3 h-3" />
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -271,7 +271,8 @@ describe("ReferenceCollection Page", () => {
     // Should show metadata fields
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByDisplayValue("A nice landscape")).toBeInTheDocument();
-    expect(screen.getByText("landscape")).toBeInTheDocument();
+    // "landscape" tag appears in both the filter bar and the metadata panel
+    expect(screen.getByLabelText("Remove tag landscape")).toBeInTheDocument();
   });
 
   it("should show save status indicator", async () => {
@@ -283,5 +284,223 @@ describe("ReferenceCollection Page", () => {
 
     // Initially should show "Saved"
     expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  describe("Tag Filtering", () => {
+    const collectionWithTags: ReferenceCollectionData = {
+      id: "tag-col",
+      name: "Tagged Collection",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      images: [
+        {
+          id: "img-a",
+          content: "data:image/png;base64,aaa",
+          tags: ["landscape", "nature"],
+          addedAt: new Date().toISOString(),
+        },
+        {
+          id: "img-b",
+          content: "data:image/png;base64,bbb",
+          tags: ["portrait"],
+          addedAt: new Date().toISOString(),
+        },
+        {
+          id: "img-c",
+          content: "data:image/png;base64,ccc",
+          tags: ["landscape"],
+          addedAt: new Date().toISOString(),
+        },
+        {
+          id: "img-d",
+          content: "data:image/png;base64,ddd",
+          tags: [],
+          addedAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      vi.mocked(referenceCollectionApi.load).mockResolvedValue(
+        collectionWithTags
+      );
+    });
+
+    it("should show tag filter bar with all unique tags", async () => {
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      // Should show all unique tags sorted alphabetically
+      expect(screen.getByRole("button", { name: "landscape" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "nature" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "portrait" })).toBeInTheDocument();
+    });
+
+    it("should filter images when a tag is clicked", async () => {
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      // Initially shows all 4 images
+      expect(screen.getAllByRole("img")).toHaveLength(4);
+
+      const user = userEvent.setup();
+      // Click "portrait" tag to filter
+      await user.click(screen.getByRole("button", { name: "portrait" }));
+
+      // Should now show only 1 image (img-b)
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+      });
+      expect(screen.getByRole("img")).toHaveAttribute(
+        "src",
+        "data:image/png;base64,bbb"
+      );
+
+      // Should show "1 of 4" count
+      expect(screen.getByText("1 of 4")).toBeInTheDocument();
+    });
+
+    it("should use AND logic when multiple tags are selected", async () => {
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+
+      // Select "landscape" - should show img-a and img-c (both have landscape)
+      await user.click(screen.getByRole("button", { name: "landscape" }));
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(2);
+      });
+
+      // Also select "nature" - only img-a has both landscape AND nature
+      await user.click(screen.getByRole("button", { name: "nature" }));
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+      });
+      expect(screen.getByRole("img")).toHaveAttribute(
+        "src",
+        "data:image/png;base64,aaa"
+      );
+
+      expect(screen.getByText("1 of 4")).toBeInTheDocument();
+    });
+
+    it("should clear filter when Clear button is clicked", async () => {
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "portrait" }));
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+      });
+
+      // Click "Clear" to reset
+      await user.click(screen.getByRole("button", { name: /clear/i }));
+
+      // Should show all images again
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(4);
+      });
+    });
+
+    it("should show empty state when no images match filter", async () => {
+      const collectionSparse: ReferenceCollectionData = {
+        ...collectionWithTags,
+        images: [
+          {
+            id: "img-x",
+            content: "data:image/png;base64,xxx",
+            tags: ["rare"],
+            addedAt: new Date().toISOString(),
+          },
+          {
+            id: "img-y",
+            content: "data:image/png;base64,yyy",
+            tags: ["common"],
+            addedAt: new Date().toISOString(),
+          },
+        ],
+      };
+      vi.mocked(referenceCollectionApi.load).mockResolvedValue(
+        collectionSparse
+      );
+
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(2);
+      });
+
+      const user = userEvent.setup();
+      // Select both tags - no image has both "rare" AND "common"
+      await user.click(screen.getByRole("button", { name: "rare" }));
+      await user.click(screen.getByRole("button", { name: "common" }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("No images match the selected tags")
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should not show tag filter bar when no images have tags", async () => {
+      vi.mocked(referenceCollectionApi.load).mockResolvedValue({
+        ...collectionWithTags,
+        images: [
+          {
+            id: "img-no-tags",
+            content: "data:image/png;base64,notag",
+            tags: [],
+            addedAt: new Date().toISOString(),
+          },
+        ],
+      });
+
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      // The tag filter bar should not render tag buttons
+      expect(screen.queryByRole("button", { name: "landscape" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "nature" })).not.toBeInTheDocument();
+    });
+
+    it("should deselect a tag when clicking it again", async () => {
+      renderWithRoute("tag-col");
+
+      await waitFor(() => {
+        expect(screen.getByText("Tagged Collection")).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+
+      // Select "portrait"
+      await user.click(screen.getByRole("button", { name: "portrait" }));
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+      });
+
+      // Deselect "portrait" by clicking again
+      await user.click(screen.getByRole("button", { name: "portrait" }));
+      await waitFor(() => {
+        expect(screen.getAllByRole("img")).toHaveLength(4);
+      });
+    });
   });
 });
