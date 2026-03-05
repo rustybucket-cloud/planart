@@ -26,6 +26,8 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
   ContextMenuShortcut,
+  ContextMenuSeparator,
+  ContextMenuLabel,
 } from "@/components/ui/context-menu";
 import { canvasApi } from "@/services/canvasApi";
 import {
@@ -34,7 +36,7 @@ import {
   isBlobUrl,
   isBase64,
 } from "@/lib/imageUtils";
-import type { CanvasElement, ViewportState } from "@/types/canvas";
+import type { CanvasElement, ViewportState, TextSize } from "@/types/canvas";
 import { createNewCanvasStartedRef, pendingNewCanvasIdRef } from "./canvasNewRefState";
 
 // Configuration
@@ -67,6 +69,20 @@ interface ResizeState {
 
 const MIN_SIZE = 20;
 const RESIZE_THRESHOLD = 5;
+
+const TEXT_SIZE_CONFIG: Record<TextSize, { label: string; fontSize: number }> = {
+  xs: { label: "XS", fontSize: 12 },
+  sm: { label: "SM", fontSize: 14 },
+  md: { label: "MD", fontSize: 18 },
+  lg: { label: "LG", fontSize: 28 },
+  xl: { label: "XL", fontSize: 40 },
+};
+
+const TEXT_SIZES: TextSize[] = ["xs", "sm", "md", "lg", "xl"];
+
+function getTextFontSize(textSize?: TextSize): number {
+  return TEXT_SIZE_CONFIG[textSize ?? "md"].fontSize;
+}
 
 const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
   nw: { cursor: "nwse-resize", position: { top: -6, left: -6 } },
@@ -257,6 +273,13 @@ export default function Canvas() {
     if (selectedElement === elementId) {
       setSelectedElement(null);
     }
+  }
+
+  function setTextSize(elementId: string, size: TextSize) {
+    pushHistory();
+    setElements((prev) =>
+      prev.map((el) => (el.id === elementId ? { ...el, textSize: size } : el))
+    );
   }
 
   function cancelPlacement() {
@@ -829,6 +852,7 @@ export default function Canvas() {
             onDeleteElement={deleteElement}
             onTextEditSave={handleTextEditSave}
             onTextEditCancel={handleTextEditCancel}
+            onSetTextSize={setTextSize}
           />
         </div>
       </div>
@@ -1390,6 +1414,7 @@ interface CanvasElementsLayerProps {
   onDeleteElement: (elementId: string) => void;
   onTextEditSave: (elementId: string, value: string) => void;
   onTextEditCancel: () => void;
+  onSetTextSize: (elementId: string, size: TextSize) => void;
 }
 
 function CanvasElementsLayer({
@@ -1405,6 +1430,7 @@ function CanvasElementsLayer({
   onDeleteElement,
   onTextEditSave,
   onTextEditCancel,
+  onSetTextSize,
 }: CanvasElementsLayerProps) {
   return (
     <>
@@ -1459,7 +1485,7 @@ function CanvasElementsLayer({
                     autoFocus
                     defaultValue={element.content === "Double-click to edit" ? "" : element.content}
                     className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.textSize)}px` }}
                     onBlur={(e) => onTextEditSave(element.id, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -1477,7 +1503,7 @@ function CanvasElementsLayer({
                 <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
                   <p
                     className="text-center break-words"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.textSize)}px` }}
                   >
                     {element.content}
                   </p>
@@ -1486,6 +1512,29 @@ function CanvasElementsLayer({
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
+            {element.type === "text" && (
+              <>
+                <ContextMenuLabel className="text-text-secondary text-xs px-2 py-1">
+                  Text Size
+                </ContextMenuLabel>
+                <div className="flex gap-1 px-2 pb-1">
+                  {TEXT_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        (element.textSize ?? "md") === size
+                          ? "bg-terracotta text-white"
+                          : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
+                      }`}
+                      onClick={() => onSetTextSize(element.id, size)}
+                    >
+                      {TEXT_SIZE_CONFIG[size].label}
+                    </button>
+                  ))}
+                </div>
+                <ContextMenuSeparator className="bg-terracotta/20" />
+              </>
+            )}
             <ContextMenuItem variant="destructive" onClick={() => onDeleteElement(element.id)}>
               <Trash2 className="w-4 h-4" />
               Delete

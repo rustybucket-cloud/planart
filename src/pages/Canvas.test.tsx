@@ -519,6 +519,82 @@ describe('Canvas Page', () => {
         expect(screen.queryByText('Delete Me')).not.toBeInTheDocument()
       })
     })
+
+    it('should show text size buttons in context menu for text elements', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      // Place a text element
+      const textButton = screen.getByTitle('Add Text (T)')
+      await user.click(textButton)
+
+      const canvas = getCanvasArea()
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 500, clientY: 400, button: 0 })
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'Size Test{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByText('Size Test')).toBeInTheDocument()
+      })
+
+      // Right-click to open context menu
+      const textElement = screen.getByText('Size Test')
+      await user.pointer({ keys: '[MouseRight]', target: textElement })
+
+      // Should see all size buttons
+      await waitFor(() => {
+        expect(screen.getByText('XS')).toBeInTheDocument()
+        expect(screen.getByText('SM')).toBeInTheDocument()
+        expect(screen.getByText('MD')).toBeInTheDocument()
+        expect(screen.getByText('LG')).toBeInTheDocument()
+        expect(screen.getByText('XL')).toBeInTheDocument()
+      })
+    })
+
+    it('should change text size when clicking a size button', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      // Place a text element
+      const textButton = screen.getByTitle('Add Text (T)')
+      await user.click(textButton)
+
+      const canvas = getCanvasArea()
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 500, clientY: 400, button: 0 })
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'Resize Me{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByText('Resize Me')).toBeInTheDocument()
+      })
+
+      // Text should default to md size (18px)
+      const textParagraph = screen.getByText('Resize Me')
+      expect(textParagraph.style.fontSize).toBe('18px')
+
+      // Right-click to open context menu
+      await user.pointer({ keys: '[MouseRight]', target: textParagraph })
+
+      await waitFor(() => {
+        expect(screen.getByText('XL')).toBeInTheDocument()
+      })
+
+      // Click XL size
+      await user.click(screen.getByText('XL'))
+
+      // Text should now be 40px
+      await waitFor(() => {
+        expect(screen.getByText('Resize Me').style.fontSize).toBe('40px')
+      })
+    })
   })
 
   describe('New canvas creation', () => {
