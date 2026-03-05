@@ -1774,74 +1774,107 @@ function CanvasToolbar({
   onRedo,
 }: CanvasToolbarProps) {
   return (
-    <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
-      <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
-        <Button
-          onClick={onToggleTextPlacement}
-          variant="ghost"
-          size="icon"
-          className={`w-12 h-12 transition-all duration-300 group ${
-            placingObjectType === "text"
-              ? "bg-terracotta/20 ring-2 ring-terracotta/50"
-              : "hover:bg-terracotta/20"
-          }`}
-          title="Add Text (T)"
-        >
-          <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
+    <TooltipProvider delayDuration={300}>
+      <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
+        <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onToggleTextPlacement}
+                variant="ghost"
+                size="icon"
+                className={`w-12 h-12 transition-all duration-300 group ${
+                  placingObjectType === "text"
+                    ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+                    : "hover:bg-terracotta/20"
+                }`}
+              >
+                <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Add Text <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">T</kbd></p>
+            </TooltipContent>
+          </Tooltip>
 
-        <Button
-          onClick={onImageButtonClick}
-          variant="ghost"
-          size="icon"
-          className={`w-12 h-12 transition-all duration-300 group ${
-            placingObjectType === "image"
-              ? "bg-terracotta/20 ring-2 ring-terracotta/50"
-              : "hover:bg-terracotta/20"
-          }`}
-          title="Add Image (I)"
-        >
-          <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onImageButtonClick}
+                variant="ghost"
+                size="icon"
+                className={`w-12 h-12 transition-all duration-300 group ${
+                  placingObjectType === "image"
+                    ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+                    : "hover:bg-terracotta/20"
+                }`}
+              >
+                <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Add Image</p>
+            </TooltipContent>
+          </Tooltip>
 
-        <div className="h-px bg-terracotta/20 my-2" />
+          <div className="h-px bg-terracotta/20 my-2" />
 
-        <div className="flex flex-col items-center gap-2 py-2">
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={tilingMode}
-              onCheckedChange={onToggleTilingMode}
-              className="data-[state=checked]:bg-terracotta"
-            />
-          </div>
-          <span className="text-[10px] text-text-secondary font-mono">TILE</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex flex-col items-center gap-2 py-2">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={tilingMode}
+                    onCheckedChange={onToggleTilingMode}
+                    className="data-[state=checked]:bg-terracotta"
+                  />
+                </div>
+                <span className="text-[10px] text-text-secondary font-mono">TILE</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Toggle Tile Mode <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">G</kbd></p>
+            </TooltipContent>
+          </Tooltip>
+
+          <div className="h-px bg-terracotta/20 my-2" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onUndo}
+                disabled={!canUndo}
+                variant="ghost"
+                size="icon"
+                className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+              >
+                <Undo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Undo <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">Ctrl+Z</kbd></p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onRedo}
+                disabled={!canRedo}
+                variant="ghost"
+                size="icon"
+                className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+              >
+                <Redo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Redo <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">Ctrl+Y</kbd></p>
+            </TooltipContent>
+          </Tooltip>
         </div>
-
-        <div className="h-px bg-terracotta/20 my-2" />
-
-        <Button
-          onClick={onUndo}
-          disabled={!canUndo}
-          variant="ghost"
-          size="icon"
-          className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
-          title="Undo (Ctrl+Z)"
-        >
-          <Undo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
-
-        <Button
-          onClick={onRedo}
-          disabled={!canRedo}
-          variant="ghost"
-          size="icon"
-          className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
-          title="Redo (Ctrl+Y)"
-        >
-          <Redo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -1854,37 +1887,57 @@ interface CanvasZoomControlsProps {
 
 function CanvasZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: CanvasZoomControlsProps) {
   return (
-    <div className="fixed right-8 bottom-8 z-40">
-      <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
-        <Button
-          onClick={onZoomIn}
-          variant="ghost"
-          size="icon"
-          className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
-          title="Zoom In (+)"
-        >
-          <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
+    <TooltipProvider delayDuration={300}>
+      <div className="fixed right-8 bottom-8 z-40">
+        <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onZoomIn}
+                variant="ghost"
+                size="icon"
+                className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
+              >
+                <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p>Zoom In <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">+</kbd></p>
+            </TooltipContent>
+          </Tooltip>
 
-        <button
-          onClick={onResetZoom}
-          className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
-          title="Reset Zoom (0)"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onResetZoom}
+                className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p>Reset Zoom <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">0</kbd></p>
+            </TooltipContent>
+          </Tooltip>
 
-        <Button
-          onClick={onZoomOut}
-          variant="ghost"
-          size="icon"
-          className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
-          title="Zoom Out (-)"
-        >
-          <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-        </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={onZoomOut}
+                variant="ghost"
+                size="icon"
+                className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
+              >
+                <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p>Zoom Out <kbd className="ml-1 px-1.5 py-0.5 bg-white/10 rounded text-xs">-</kbd></p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
