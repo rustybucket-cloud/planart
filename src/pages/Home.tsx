@@ -1,29 +1,67 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Folder, FileImage, Plus, Grid3x3, LayoutGrid, Search } from "lucide-react";
-
-// Mock data - replace with real data later
-const mockProjects = [
-  { id: 1, name: "Brand Redesign", canvasCount: 8, lastModified: "2 hours ago", color: "from-terracotta to-warm-orange" },
-  { id: 2, name: "Product Mockups", canvasCount: 12, lastModified: "Yesterday", color: "from-warm-orange to-terracotta" },
-  { id: 3, name: "Website Wireframes", canvasCount: 6, lastModified: "3 days ago", color: "from-terracotta to-[#e89863]" },
-];
-
-const mockCanvases = [
-  { id: 1, name: "Hero Section v3", project: "Brand Redesign", lastModified: "1 hour ago", thumbnail: "gradient-1" },
-  { id: 2, name: "Mobile App Flow", project: "Product Mockups", lastModified: "3 hours ago", thumbnail: "gradient-2" },
-  { id: 3, name: "Dashboard Layout", project: "Website Wireframes", lastModified: "5 hours ago", thumbnail: "gradient-3" },
-  { id: 4, name: "Landing Page", project: "Brand Redesign", lastModified: "Yesterday", thumbnail: "gradient-4" },
-  { id: 5, name: "Color Palette", project: "Brand Redesign", lastModified: "2 days ago", thumbnail: "gradient-5" },
-  { id: 6, name: "Component Library", project: "Product Mockups", lastModified: "3 days ago", thumbnail: "gradient-6" },
-];
+import { FileImage, Plus, Grid3x3, LayoutGrid, Search, Trash2, Loader2 } from "lucide-react";
+import { canvasApi } from "@/services/canvasApi";
+import type { CanvasSummary } from "@/types/canvas";
 
 type ViewMode = "grid" | "list";
+
+function formatRelativeTime(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  return date.toLocaleDateString();
+}
+
+function getGradientByIndex(index: number): string {
+  const gradients = [
+    "from-terracotta via-warm-orange to-golden-earth",
+    "from-warm-orange via-terracotta to-[#c97a54]",
+    "from-[#e89863] via-terracotta to-warm-orange",
+    "from-terracotta via-[#e89863] to-[#f0ac7b]",
+    "from-terracotta to-warm-orange",
+    "from-golden-earth via-warm-orange to-terracotta",
+  ];
+  return gradients[index % gradients.length];
+}
 
 export default function Home() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [searchQuery, setSearchQuery] = useState("");
+  const [canvases, setCanvases] = useState<CanvasSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    canvasApi.list().then(setCanvases).finally(() => setIsLoading(false));
+  }, []);
+
+  const handleCreateCanvas = () => {
+    navigate("/canvas/new");
+  };
+
+  const handleDeleteCanvas = async (e: React.MouseEvent, canvasId: string) => {
+    e.stopPropagation();
+    if (!confirm("Delete this canvas?")) return;
+    try {
+      await canvasApi.delete(canvasId);
+      setCanvases((prev) => prev.filter((c) => c.id !== canvasId));
+    } catch (error) {
+      console.error("Failed to delete canvas:", error);
+    }
+  };
+
+  const filteredCanvases = canvases.filter((canvas) =>
+    canvas.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="h-screen bg-bg-deep text-white relative overflow-hidden flex flex-col">
@@ -42,11 +80,14 @@ export default function Home() {
                 Your Work
               </h1>
               <p className="text-gray-400 text-lg font-medium mt-1">
-                {mockProjects.length} projects · {mockCanvases.length} canvases
+                {canvases.length} canvas{canvases.length !== 1 ? "es" : ""}
               </p>
             </div>
 
-            <button className="group relative px-8 py-4 bg-gradient-to-r from-terracotta to-warm-orange text-white font-bold text-lg rounded-xl hover:shadow-[0_0_30px_rgba(212,132,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 overflow-hidden">
+            <button
+              onClick={handleCreateCanvas}
+              className="group relative px-8 py-4 bg-gradient-to-r from-terracotta to-warm-orange text-white font-bold text-lg rounded-xl hover:shadow-[0_0_30px_rgba(212,132,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 overflow-hidden"
+            >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               <span className="relative flex items-center gap-2">
                 <Plus className="w-6 h-6" strokeWidth={2.5} />
@@ -98,76 +139,66 @@ export default function Home() {
         <div className="flex-1 overflow-y-auto px-8 pb-12 relative">
           {/* Subtle fade indicator at top */}
           <div className="sticky top-0 left-0 right-0 h-4 bg-gradient-to-b from-bg-deep to-transparent pointer-events-none z-10" />
-        {/* Projects Section */}
-        <section className="mb-16 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
-          <div className="flex items-center gap-4 mb-6">
-            <Folder className="w-7 h-7 text-terracotta" strokeWidth={2} />
-            <h2 className="text-3xl font-black tracking-tight">Projects</h2>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
           </div>
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockProjects.map((project, index) => (
-              <div
-                key={project.id}
-                onClick={() => navigate(`/project/${project.id}`)}
-                className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl p-6 hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in slide-in-from-bottom-4"
-                style={{ animationDelay: `${200 + index * 100}ms` }}
-              >
-                {/* Color accent */}
-                <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${project.color} rounded-t-2xl`} />
-
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-14 h-14 bg-gradient-to-br ${project.color} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                    <Folder className="w-7 h-7 text-white" strokeWidth={2} />
-                  </div>
-                  <span className="text-xs font-mono text-text-secondary bg-terracotta/10 px-3 py-1.5 rounded-full">
-                    {project.canvasCount} canvases
-                  </span>
-                </div>
-
-                <h3 className="text-xl font-bold mb-2 group-hover:text-terracotta transition-colors">
-                  {project.name}
-                </h3>
-                <p className="text-sm text-text-secondary font-medium">
-                  Modified {project.lastModified}
-                </p>
-              </div>
-            ))}
-
-            {/* New Project Card */}
-            <div className="group relative bg-bg-panel/40 backdrop-blur-sm border border-dashed border-terracotta/20 rounded-2xl p-6 hover:border-terracotta/50 hover:bg-bg-panel/60 transition-all duration-500 cursor-pointer flex flex-col items-center justify-center min-h-[180px] animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '500ms' }}>
-              <Plus className="w-12 h-12 text-text-secondary group-hover:text-terracotta transition-colors mb-3 group-hover:scale-110 transition-transform" strokeWidth={2} />
-              <span className="text-text-secondary group-hover:text-white font-bold transition-colors">
-                New Project
-              </span>
+        {/* Empty State */}
+        {!isLoading && canvases.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
+            <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-terracotta to-warm-orange flex items-center justify-center mb-6">
+              <FileImage className="w-12 h-12 text-white" strokeWidth={2} />
             </div>
+            <h2 className="text-2xl font-bold mb-2">No canvases yet</h2>
+            <p className="text-text-secondary mb-6">Create your first canvas to get started</p>
+            <button
+              onClick={handleCreateCanvas}
+              className="px-6 py-3 bg-gradient-to-r from-terracotta to-warm-orange text-white font-bold rounded-xl hover:shadow-[0_0_30px_rgba(212,132,94,0.4)] transition-all duration-300"
+            >
+              <span className="flex items-center gap-2">
+                <Plus className="w-5 h-5" strokeWidth={2.5} />
+                Create Canvas
+              </span>
+            </button>
           </div>
-        </section>
+        )}
 
-        {/* Recent Canvases Section */}
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '300ms' }}>
+        {/* Canvases Section */}
+        {!isLoading && filteredCanvases.length > 0 && (
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
           <div className="flex items-center gap-4 mb-6">
             <FileImage className="w-7 h-7 text-terracotta" strokeWidth={2} />
-            <h2 className="text-3xl font-black tracking-tight">Recent Canvases</h2>
+            <h2 className="text-3xl font-black tracking-tight">Your Canvases</h2>
           </div>
 
           {viewMode === "grid" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {mockCanvases.map((canvas, index) => (
+              {filteredCanvases.map((canvas, index) => (
                 <div
                   key={canvas.id}
                   onClick={() => navigate(`/canvas/${canvas.id}`)}
                   className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
-                  style={{ animationDelay: `${400 + index * 80}ms` }}
+                  style={{ animationDelay: `${200 + index * 80}ms` }}
                 >
                   {/* Canvas Thumbnail */}
-                  <div className={`aspect-video bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} relative overflow-hidden`}>
+                  <div className={`aspect-video bg-gradient-to-br ${getGradientByIndex(index)} relative overflow-hidden`}>
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="w-16 h-16 rounded-full bg-terracotta flex items-center justify-center shadow-lg">
                         <FileImage className="w-8 h-8 text-white" strokeWidth={2} />
                       </div>
                     </div>
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDeleteCanvas(e, canvas.id)}
+                      className="absolute top-2 right-2 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                    >
+                      <Trash2 className="w-4 h-4 text-white" strokeWidth={2} />
+                    </button>
                   </div>
 
                   {/* Canvas Info */}
@@ -175,11 +206,11 @@ export default function Home() {
                     <h3 className="text-lg font-bold mb-1 group-hover:text-terracotta transition-colors truncate">
                       {canvas.name}
                     </h3>
-                    <p className="text-sm text-text-secondary font-medium mb-1 truncate">
-                      {canvas.project}
+                    <p className="text-sm text-text-secondary font-medium mb-1">
+                      {canvas.elementCount} object{canvas.elementCount !== 1 ? "s" : ""}
                     </p>
                     <p className="text-xs text-text-secondary font-mono">
-                      {canvas.lastModified}
+                      {formatRelativeTime(canvas.updatedAt)}
                     </p>
                   </div>
                 </div>
@@ -187,45 +218,39 @@ export default function Home() {
             </div>
           ) : (
             <div className="space-y-3">
-              {mockCanvases.map((canvas, index) => (
+              {filteredCanvases.map((canvas, index) => (
                 <div
                   key={canvas.id}
                   onClick={() => navigate(`/canvas/${canvas.id}`)}
                   className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4"
-                  style={{ animationDelay: `${400 + index * 60}ms` }}
+                  style={{ animationDelay: `${200 + index * 60}ms` }}
                 >
-                  <div className={`w-20 h-14 rounded-lg bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} flex-shrink-0`} />
+                  <div className={`w-20 h-14 rounded-lg bg-gradient-to-br ${getGradientByIndex(index)} flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold truncate group-hover:text-terracotta transition-colors">
                       {canvas.name}
                     </h3>
-                    <p className="text-sm text-text-secondary font-medium truncate">
-                      {canvas.project}
+                    <p className="text-sm text-text-secondary font-medium">
+                      {canvas.elementCount} object{canvas.elementCount !== 1 ? "s" : ""}
                     </p>
                   </div>
                   <p className="text-sm text-text-secondary font-mono flex-shrink-0">
-                    {canvas.lastModified}
+                    {formatRelativeTime(canvas.updatedAt)}
                   </p>
+                  <button
+                    onClick={(e) => handleDeleteCanvas(e, canvas.id)}
+                    className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" strokeWidth={2} />
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </section>
+        )}
         </div>
       </div>
     </div>
   );
-}
-
-// Helper function for thumbnail gradients (warm terracotta/earthy palette)
-function getThumbnailGradient(thumbnail: string): string {
-  const gradients: Record<string, string> = {
-    "gradient-1": "from-terracotta via-warm-orange to-golden-earth", // Terracotta Sunset
-    "gradient-2": "from-warm-orange via-terracotta to-[#c97a54]", // Warm Clay
-    "gradient-3": "from-[#e89863] via-terracotta to-warm-orange", // Soft Terracotta
-    "gradient-4": "from-terracotta via-[#e89863] to-[#f0ac7b]", // Light Warmth
-    "gradient-5": "from-terracotta to-warm-orange", // Classic Terracotta
-    "gradient-6": "from-golden-earth via-warm-orange to-terracotta", // Golden Earth
-  };
-  return gradients[thumbnail] || gradients["gradient-1"];
 }

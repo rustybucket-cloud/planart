@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   ArrowLeft,
@@ -15,6 +15,8 @@ import {
   Move,
   Undo2,
   Redo2,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -25,26 +27,18 @@ import {
   ContextMenuTrigger,
   ContextMenuShortcut,
 } from "@/components/ui/context-menu";
-
-interface CanvasElement {
-  id: string;
-  type: "image" | "text";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  content: string; // URL for images, text for text elements
-  rotation?: number;
-}
-
-interface ViewportState {
-  x: number;
-  y: number;
-  zoom: number;
-}
+import { canvasApi } from "@/services/canvasApi";
+import {
+  blobUrlToBase64,
+  base64ToBlobUrl,
+  isBlobUrl,
+  isBase64,
+} from "@/lib/imageUtils";
+import type { CanvasElement, ViewportState } from "@/types/canvas";
 
 // Configuration
 const MAX_UNDO_HISTORY = 5;
+const AUTO_SAVE_DELAY = 2000;
 
 // Helper function to check if two rectangles overlap
 const rectanglesOverlap = (
@@ -164,6 +158,12 @@ export default function Canvas() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  // Persistence state
+  const [canvasName, setCanvasName] = useState("Untitled Canvas");
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isNewCanvas, setIsNewCanvas] = useState(false);
+
   // Canvas state
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [history, setHistory] = useState<CanvasElement[][]>([]);
@@ -181,6 +181,7 @@ export default function Canvas() {
   } | null>(null);
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  const [canvasId, setCanvasId] = useState<string | null>(null);
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -216,6 +217,105 @@ export default function Canvas() {
     sw: { cursor: "nesw-resize", position: { bottom: -6, left: -6 } },
     se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
   };
+
+  // Load canvas on mount
+  useEffect(() => {
+    const loadCanvas = async () => {
+      if (id === "new") {
+        // Create a new canvas
+        setIsNewCanvas(true);
+        try {
+          const newCanvas = await canvasApi.create("Untitled Canvas");
+          setCanvasId(newCanvas.id);
+          setCanvasName(newCanvas.name);
+          setViewport(newCanvas.viewport);
+          setElements([]);
+          // Navigate to the new canvas URL
+          navigate(`/canvas/${newCanvas.id}`, { replace: true });
+        } catch (error) {
+          console.error("Failed to create canvas:", error);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      if (!id) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const canvas = await canvasApi.load(id);
+        setCanvasId(canvas.id);
+        setCanvasName(canvas.name);
+        setViewport(canvas.viewport);
+
+        // Convert base64 images to blob URLs for display
+        const elementsWithBlobs = canvas.elements.map((el) => {
+          if (el.type === "image" && isBase64(el.content)) {
+            return { ...el, content: base64ToBlobUrl(el.content) };
+          }
+          return el;
+        });
+        setElements(elementsWithBlobs);
+      } catch (error) {
+        console.error("Failed to load canvas:", error);
+      }
+      setIsLoading(false);
+    };
+
+    loadCanvas();
+  }, [id, navigate]);
+
+  // Auto-save with debounce
+  const saveCanvas = useCallback(async () => {
+    if (!canvasId || isLoading) return;
+
+    setSaveStatus("saving");
+    try {
+      // Convert blob URLs to base64 for persistence
+      const elementsToSave = await Promise.all(
+        elements.map(async (el) => {
+          if (el.type === "image" && isBlobUrl(el.content)) {
+            return { ...el, content: await blobUrlToBase64(el.content) };
+          }
+          return el;
+        })
+      );
+
+      await canvasApi.save({
+        id: canvasId,
+        name: canvasName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        viewport,
+        elements: elementsToSave,
+      });
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error("Failed to save canvas:", error);
+      setSaveStatus("error");
+    }
+  }, [canvasId, canvasName, elements, viewport, isLoading]);
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    if (!canvasId || isLoading || isNewCanvas) return;
+
+    const timeoutId = setTimeout(() => {
+      saveCanvas();
+    }, AUTO_SAVE_DELAY);
+
+    return () => clearTimeout(timeoutId);
+  }, [elements, viewport, canvasId, isLoading, isNewCanvas, saveCanvas]);
+
+  // Reset save status after showing "saved"
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      const timeoutId = setTimeout(() => setSaveStatus("idle"), 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [saveStatus]);
 
   // Zoom controls
   const zoomIn = () => {
@@ -714,6 +814,17 @@ export default function Canvas() {
     };
   }, []);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-bg-deep text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
+          <p className="text-text-secondary font-mono">Loading canvas...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
       {/* Header */}
@@ -730,9 +841,28 @@ export default function Canvas() {
             </Button>
             <div>
               <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Crimson Pro', serif" }}>
-                Canvas {id}
+                {canvasName}
               </h1>
-              <p className="text-sm text-text-secondary font-mono">Project Workspace</p>
+              <div className="flex items-center gap-2">
+                {saveStatus === "saving" && (
+                  <span className="text-xs text-text-secondary font-mono flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Saving...
+                  </span>
+                )}
+                {saveStatus === "saved" && (
+                  <span className="text-xs text-green-400 font-mono flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Saved
+                  </span>
+                )}
+                {saveStatus === "error" && (
+                  <span className="text-xs text-red-400 font-mono">Save failed</span>
+                )}
+                {saveStatus === "idle" && (
+                  <span className="text-xs text-text-secondary font-mono">{elements.length} objects</span>
+                )}
+              </div>
             </div>
           </div>
 

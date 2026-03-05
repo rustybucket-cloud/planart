@@ -1,154 +1,69 @@
-# Canvas
+# Canvas Feature
 
 ## Overview
-The infinite canvas is the core creative workspace of PlanArt. It allows users to compose visual ideas by adding images and text elements in an unbounded 2D space with intuitive pan and zoom controls.
 
-## Current Implementation Status
+The canvas is the main workspace where users create visual compositions with images and text.
 
-### ✅ Completed Features
+## Persistence
 
-#### Core Canvas System
-- **Infinite pan & zoom**: Smooth viewport controls with coordinate tracking
-- **Paste from clipboard** (Ctrl+V): Direct image pasting from system clipboard at cursor position
-- **Drag & drop positioning**: Click and drag any element to reposition
-- **Selection system**: Visual selection ring with delete capability
-- **Viewport controls**: Pan by scrolling or Shift+Click+Drag
-- **Zoom controls**: Ctrl+Scroll or dedicated zoom buttons (10% - 500%)
+Canvases are automatically saved to local storage using Tauri's file system API.
 
-#### Element Types
-- **Image elements**: Paste from clipboard or upload via file picker, displays at natural dimensions
-- **Text elements**: Click toolbar button to enter placement mode, click canvas to place, double-click to edit content
+### Storage Location
 
-#### Image Resizing
-- **Corner resize handles**: Four handles appear at corners when an image is selected
-- **Proportional scaling**: Drag any corner to resize while maintaining aspect ratio
-- **Free transform**: Hold Shift while dragging to unlock aspect ratio
-- **Minimum size**: Images cannot be resized smaller than 20x20 pixels
-- **Visual feedback**: Handles highlight on hover, cursor changes to resize indicator
+Canvases are stored as JSON files in the Tauri app data directory:
+- macOS: `~/Library/Application Support/com.pattonja.planart/canvases/`
+- Linux: `~/.local/share/com.pattonja.planart/canvases/`
+- Windows: `C:\Users\<user>\AppData\Roaming\com.pattonja.planart\canvases\`
 
-#### Placement Mode
-- **Click-to-place interaction**: Click a tool button (e.g., Text, Image) to enter placement mode
-- **Visual preview**: Semi-transparent preview follows cursor showing where element will be placed
-  - Text shows placeholder box
-  - Image shows thumbnail of selected image (max 200px preview)
-- **Cursor feedback**: Cursor changes to crosshair while in placement mode
-- **Place on click**: Left-click to place the element at cursor position
-- **Cancel with Escape**: Press Escape to exit placement mode without placing
+### Auto-save
 
-#### Image Upload
-- **File picker**: Click the Image button in the toolbar to open file picker dialog
-- **Supported formats**: All image formats supported by browser (PNG, JPG, GIF, WebP, etc.)
-- **Click-to-place**: After selecting an image, click on canvas to place it at that position
-- **Natural dimensions**: Images are placed at their original size, centered on click position
+- Changes are automatically saved 2 seconds after the last modification
+- A save status indicator appears in the header (Saving... / Saved)
+- Images are converted to base64 for portable storage
 
-#### Tiling Mode ✨
-- **Toggle switch** in left toolbar
-- **Smart adjacent tiling**: When an element is selected, pasting creates a single tile adjacent to it in the direction of your cursor
-  - Supports 8 cardinal directions (N, NE, E, SE, S, SW, W, NW)
-  - 10px spacing between tiles
-  - **Collision detection**: Automatically finds the next available spot if the initial position is occupied
-  - Tiles "slide" in the cursor direction until finding a clear space
-  - Perfect for building custom grids and patterns with precise control
-- **Grid mode**: When no element is selected, pasting creates a **4×3 grid** (12 total tiles)
-  - Centered at viewport
-  - Ideal for quick pattern exploration and mood boards
+### Data Schema
 
-#### User Interface
-- **Floating left toolbar**: Text tool, image info, tiling toggle, delete button
-- **Floating zoom controls**: Zoom in/out buttons with percentage display
-- **Status bar**: Viewport coordinates (X, Y) and object count
-- **Header bar**: Navigation back to home, settings, share, download, delete project
-- **Help overlay**: Keyboard shortcuts display when canvas is empty
+Each canvas is stored as a JSON file with the following structure:
 
-#### Visual Design
-- **Architect's Studio aesthetic**: Technical precision meets warm creative energy
-- **Dot grid background**: Scales with zoom level, creates blueprint feel
-- **Glass-morphic UI panels**: Subtle backdrop blur with terracotta accents
-- **Warm color palette**: Deep navy (#1a1d28) base with terracotta accent (#d4845e)
-- **Typography**: Crimson Pro serif for elegance, monospace for technical data
+```json
+{
+  "id": "uuid",
+  "name": "Canvas Name",
+  "createdAt": "ISO timestamp",
+  "updatedAt": "ISO timestamp",
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "elements": [
+    {
+      "id": "uuid",
+      "type": "image | text",
+      "x": 100,
+      "y": 200,
+      "width": 300,
+      "height": 400,
+      "content": "base64 data or text",
+      "rotation": 0
+    }
+  ]
+}
+```
 
-### Keyboard Shortcuts
-- `Ctrl/Cmd+Z` - Undo last action (up to 5 actions)
-- `Ctrl/Cmd+Y` or `Ctrl/Cmd+Shift+Z` - Redo
-- `Ctrl+V` - Paste images from clipboard
-- `Scroll` / `Mouse Wheel` - Zoom in/out (toward cursor position)
-- `+` / `=` - Zoom in
-- `-` - Zoom out
-- `0` - Reset zoom to 100%
-- `Escape` - Cancel placement mode
-- `Shift+Click+Drag` - Pan canvas
-- `Click+Drag` on element - Move element
-- `Double-Click` on text - Edit text content
-- `Del` / `Backspace` - Delete selected element
-- `Right-click` on element - Open context menu
-- `Drag corner handle` - Resize image (proportional)
-- `Shift+Drag corner handle` - Resize image (free transform)
+## API Commands
 
-### Technical Details
+The following Tauri commands are available:
 
-#### Coordinate System
-- Canvas uses a coordinate space independent of viewport
-- Screen coordinates converted to canvas coordinates based on zoom and pan
-- Elements store absolute canvas positions (x, y)
+- `create_canvas(name)` - Create a new canvas
+- `save_canvas(canvas)` - Save canvas data
+- `load_canvas(id)` - Load a canvas by ID
+- `list_canvases()` - List all canvases
+- `delete_canvas(id)` - Delete a canvas
 
-#### State Management
-- Elements array stores all canvas objects
-- Viewport state tracks pan position (x, y) and zoom level
-- Selection tracking for active element
-- Tiling mode toggle state
+## Related Files
 
-#### Performance Considerations
-- Transform-based rendering (CSS transform for pan/zoom)
-- No re-render of element content during pan/zoom
-- Blob URLs for pasted images (auto-managed by browser)
-
-## Future Enhancements
-
-### Planned Features
-- [x] Image upload via file picker
-- [ ] Export canvas as image (PNG/JPG/SVG)
-- [x] Element resizing (images)
-- [ ] Element rotation
-- [ ] Layer ordering (bring forward, send backward)
-- [ ] Multi-select with marquee tool
-- [x] Undo system (Ctrl/Cmd+Z, up to 5 actions)
-- [ ] Canvas persistence (save to database)
-- [x] Keyboard shortcuts for zoom (+/-, 0 to reset)
-- [ ] Keyboard shortcuts for delete (Del key)
-- [x] Context menu for element actions (delete)
-- [ ] Grid snap mode
-- [ ] Canvas background color picker
-- [ ] Element opacity controls
-- [ ] Copy/paste elements within canvas
-- [ ] Alignment guides and smart snapping
-
-### Tiling Mode Enhancements
-- [ ] Configurable grid size (rows × columns)
-- [ ] Configurable spacing between tiles
-- [ ] Pattern offset options (brick pattern, etc.)
-- [ ] Auto-scale tiles to fit grid
-
-### Text Enhancements
-- [ ] Rich text formatting (bold, italic, color)
-- [ ] Font selection
-- [ ] Font size adjustment
-- [ ] Text alignment options
-- [ ] Text background/box styling
-
-## Design Rationale
-
-### Why Infinite Canvas?
-- **Freedom**: No artificial boundaries on creative exploration
-- **Flexibility**: Organize ideas spatially however makes sense
-- **Scalability**: Start small, expand as needed
-
-### Why Tiling Mode?
-- **Pattern Design**: Quickly test how images tile seamlessly
-- **Mood Boards**: Rapidly fill space with repeated elements
-- **Efficiency**: One paste creates full composition
-
-### Why Paste-Focused?
-- **Speed**: Fastest way to get content onto canvas
-- **Natural workflow**: Users already copy images from web, screenshots, etc.
-- **Cross-platform**: Works everywhere clipboard API is supported
-- **Intuitive placement**: Images paste exactly where your cursor is pointing
+- `src-tauri/src/lib.rs` - Rust backend commands
+- `src/services/canvasApi.ts` - TypeScript API wrapper
+- `src/types/canvas.ts` - Shared type definitions
+- `src/lib/imageUtils.ts` - Image conversion utilities
