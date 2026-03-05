@@ -75,8 +75,705 @@ const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSS
   se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
 };
 
-// Helper function to check if two rectangles overlap
-const rectanglesOverlap = (
+export default function Canvas() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [canvasName, setCanvasName] = useState("Untitled Canvas");
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+
+  const [elements, setElements] = useState<CanvasElement[]>([]);
+  const [history, setHistory] = useState<CanvasElement[][]>([]);
+  const [redoHistory, setRedoHistory] = useState<CanvasElement[][]>([]);
+  const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [tilingMode, setTilingMode] = useState(false);
+  const [placingObjectType, setPlacingObjectType] = useState<PlacementObjectType>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  const [canvasId, setCanvasId] = useState<string | null>(null);
+
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastMousePos = useRef({ x: 0, y: 0 });
+  const currentMousePos = useRef({ x: 0, y: 0 });
+
+  const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
+  const pendingResize = useRef<ResizeState | null>(null);
+
+  useEffect(() => {
+    async function loadCanvas() {
+      if (id === "new") {
+        if (createNewCanvasStartedRef.current) {
+          if (pendingNewCanvasIdRef.current !== null) {
+            navigate(`/canvas/${pendingNewCanvasIdRef.current}`, { replace: true });
+          }
+          setIsLoading(false);
+          return;
+        }
+        createNewCanvasStartedRef.current = true;
+        try {
+          const newCanvas = await canvasApi.create("Untitled Canvas");
+          pendingNewCanvasIdRef.current = newCanvas.id;
+          setCanvasId(newCanvas.id);
+          setCanvasName(newCanvas.name);
+          setViewport(newCanvas.viewport);
+          setElements([]);
+          navigate(`/canvas/${newCanvas.id}`, { replace: true });
+        } catch (error) {
+          console.error("Failed to create canvas:", error);
+          createNewCanvasStartedRef.current = false;
+          pendingNewCanvasIdRef.current = null;
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      createNewCanvasStartedRef.current = false;
+      pendingNewCanvasIdRef.current = null;
+
+      if (!id) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const canvas = await canvasApi.load(id);
+        setCanvasId(canvas.id);
+        setCanvasName(canvas.name);
+        setViewport(canvas.viewport);
+
+        const elementsWithBlobs = canvas.elements.map((el) => {
+          if (el.type === "image" && isBase64(el.content)) {
+            return { ...el, content: base64ToBlobUrl(el.content) };
+          }
+          return el;
+        });
+        setElements(elementsWithBlobs);
+      } catch (error) {
+        console.error("Failed to load canvas:", error);
+      }
+      setIsLoading(false);
+    }
+
+    loadCanvas();
+  }, [id, navigate]);
+
+  const saveCanvas = useCallback(async function saveCanvas() {
+    if (!canvasId || isLoading) return;
+
+    setSaveStatus("saving");
+    try {
+      const elementsToSave = await Promise.all(
+        elements.map(async (el) => {
+          if (el.type === "image" && isBlobUrl(el.content)) {
+            return { ...el, content: await blobUrlToBase64(el.content) };
+          }
+          return el;
+        })
+      );
+
+      await canvasApi.save({
+        id: canvasId,
+        name: canvasName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        viewport,
+        elements: elementsToSave,
+      });
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error("Failed to save canvas:", error);
+      setSaveStatus("error");
+    }
+  }, [canvasId, canvasName, elements, viewport, isLoading]);
+
+  useEffect(() => {
+    if (!canvasId || isLoading) return;
+
+    const timeoutId = setTimeout(() => {
+      saveCanvas();
+    }, AUTO_SAVE_DELAY);
+
+    return () => clearTimeout(timeoutId);
+  }, [elements, viewport, canvasId, isLoading, saveCanvas]);
+
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      const timeoutId = setTimeout(() => setSaveStatus("idle"), 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [saveStatus]);
+
+  function zoomIn() {
+    setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }));
+  }
+
+  function zoomOut() {
+    setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }));
+  }
+
+  function resetZoom() {
+    setViewport({ x: 0, y: 0, zoom: 1 });
+  }
+
+  function pushHistory() {
+    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+    setRedoHistory([]);
+  }
+
+  function undo() {
+    if (history.length === 0) return;
+    setRedoHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+    const previous = history[history.length - 1];
+    setHistory((prev) => prev.slice(0, -1));
+    setElements(previous);
+    setSelectedElement(null);
+  }
+
+  function redo() {
+    if (redoHistory.length === 0) return;
+    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
+    const next = redoHistory[redoHistory.length - 1];
+    setRedoHistory((prev) => prev.slice(0, -1));
+    setElements(next);
+    setSelectedElement(null);
+  }
+
+  function deleteSelected() {
+    if (selectedElement) {
+      pushHistory();
+      setElements((prev) => prev.filter((el) => el.id !== selectedElement));
+      setSelectedElement(null);
+    }
+  }
+
+  function deleteElement(elementId: string) {
+    pushHistory();
+    setElements((prev) => prev.filter((el) => el.id !== elementId));
+    if (selectedElement === elementId) {
+      setSelectedElement(null);
+    }
+  }
+
+  function cancelPlacement() {
+    if (pendingImage) {
+      URL.revokeObjectURL(pendingImage.url);
+    }
+    setPlacingObjectType(null);
+    setPreviewPos(null);
+    setPendingImage(null);
+  }
+
+  function handleResizeStart(e: React.MouseEvent, elementId: string, corner: ResizeCorner) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    pushHistory();
+    pendingResize.current = {
+      elementId,
+      corner,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: element.width,
+      startHeight: element.height,
+      startElementX: element.x,
+      startElementY: element.y,
+      aspectRatio: element.width / element.height,
+    };
+
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+
+    img.onload = () => {
+      setPendingImage({ url, width: img.width, height: img.height });
+      setPlacingObjectType("image");
+    };
+
+    e.target.value = "";
+  }
+
+  useKeyboardShortcuts({
+    shortcuts: [
+      { key: "+", callback: zoomIn, description: "Zoom in" },
+      { key: "=", callback: zoomIn, description: "Zoom in" },
+      { key: "-", callback: zoomOut, description: "Zoom out" },
+      { key: "0", callback: resetZoom, description: "Reset zoom" },
+      { key: "Delete", callback: deleteSelected, description: "Delete selected element" },
+      { key: "Backspace", callback: deleteSelected, description: "Delete selected element" },
+      { key: "Escape", callback: cancelPlacement, description: "Cancel placement" },
+      { key: "z", ctrlOrMeta: true, callback: undo, description: "Undo" },
+      { key: "y", ctrlOrMeta: true, callback: redo, description: "Redo" },
+      { key: "z", ctrlOrMeta: true, shift: true, callback: redo, description: "Redo" },
+    ],
+  });
+
+  function screenToCanvas(screenX: number, screenY: number) {
+    return {
+      x: (screenX - viewport.x) / viewport.zoom,
+      y: (screenY - viewport.y) / viewport.zoom,
+    };
+  }
+
+  const stateRef = useRef({
+    isPanning,
+    resizingElement,
+    viewport,
+    placingObjectType,
+    tilingMode,
+    selectedElement,
+    elements,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      isPanning,
+      resizingElement,
+      viewport,
+      placingObjectType,
+      tilingMode,
+      selectedElement,
+      elements,
+    };
+  });
+
+  function handleMouseDown(e: React.MouseEvent) {
+    if (placingObjectType && e.button === 0 && !e.shiftKey) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+        pushHistory();
+
+        if (placingObjectType === "text") {
+          const newElement: CanvasElement = {
+            id: crypto.randomUUID(),
+            type: "text",
+            x: canvasPos.x - 100,
+            y: canvasPos.y - 30,
+            width: 200,
+            height: 60,
+            content: "",
+          };
+          setElements((prev) => [...prev, newElement]);
+          setSelectedElement(newElement.id);
+          setTimeout(() => setEditingElementId(newElement.id), 0);
+        } else if (placingObjectType === "image" && pendingImage) {
+          const newElement: CanvasElement = {
+            id: crypto.randomUUID(),
+            type: "image",
+            x: canvasPos.x - pendingImage.width / 2,
+            y: canvasPos.y - pendingImage.height / 2,
+            width: pendingImage.width,
+            height: pendingImage.height,
+            content: pendingImage.url,
+          };
+          setElements((prev) => [...prev, newElement]);
+          setSelectedElement(newElement.id);
+          setPendingImage(null);
+        }
+
+        setPlacingObjectType(null);
+        setPreviewPos(null);
+      }
+      return;
+    }
+
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      setIsPanning(true);
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    }
+  }
+
+  function handleElementMouseDown(e: React.MouseEvent, elementId: string) {
+    if (e.button !== 0 || e.shiftKey) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    setSelectedElement(elementId);
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const startX = element.x;
+    const startY = element.y;
+    let hasMoved = false;
+
+    function handleMove(ev: MouseEvent) {
+      const dxScreen = ev.clientX - startClientX;
+      const dyScreen = ev.clientY - startClientY;
+      const distance = Math.sqrt(dxScreen * dxScreen + dyScreen * dyScreen);
+
+      if (!hasMoved && distance < 3) {
+        return;
+      }
+
+      if (!hasMoved) {
+        hasMoved = true;
+        pushHistory();
+      }
+
+      const { viewport: currentViewport } = stateRef.current;
+      const dx = dxScreen / currentViewport.zoom;
+      const dy = dyScreen / currentViewport.zoom;
+
+      setElements((prev) =>
+        prev.map((el) => (el.id === elementId ? { ...el, x: startX + dx, y: startY + dy } : el))
+      );
+    }
+
+    function handleUp() {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    }
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }
+
+  function handleTextDoubleClick(element: CanvasElement) {
+    if (element.type === "text") {
+      setEditingElementId(element.id);
+    }
+  }
+
+  function handleTextEditSave(elementId: string, newContent: string) {
+    pushHistory();
+    setElements((prev) =>
+      prev.map((el) =>
+        el.id === elementId ? { ...el, content: newContent || "Double-click to edit" } : el
+      )
+    );
+    setEditingElementId(null);
+  }
+
+  function handleTextEditCancel() {
+    setEditingElementId(null);
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    function trackMousePosition(e: MouseEvent) {
+      currentMousePos.current = { x: e.clientX, y: e.clientY };
+    }
+
+    function handleWheel(e: WheelEvent) {
+      e.preventDefault();
+      const { viewport } = stateRef.current;
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        setViewport((prev) => ({
+          x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
+          y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
+          zoom: newZoom,
+        }));
+      }
+    }
+
+    function handleMouseMove(e: MouseEvent) {
+      const { isPanning, resizingElement, viewport, placingObjectType } = stateRef.current;
+
+      if (pendingResize.current && !resizingElement) {
+        const dx = e.clientX - pendingResize.current.startX;
+        const dy = e.clientY - pendingResize.current.startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= RESIZE_THRESHOLD) {
+          setResizingElement(pendingResize.current);
+        }
+      }
+
+      if (resizingElement) {
+        const {
+          elementId,
+          corner,
+          startX,
+          startWidth,
+          startHeight,
+          startElementX,
+          startElementY,
+          aspectRatio,
+        } = resizingElement;
+
+        const dx = (e.clientX - startX) / viewport.zoom;
+        const dy = (e.clientY - resizingElement.startY) / viewport.zoom;
+        const maintainAspect = !e.shiftKey;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newX = startElementX;
+        let newY = startElementY;
+
+        switch (corner) {
+          case "se":
+            newWidth = Math.max(MIN_SIZE, startWidth + dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
+            break;
+          case "sw":
+            newWidth = Math.max(MIN_SIZE, startWidth - dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
+            newX = startElementX + startWidth - newWidth;
+            break;
+          case "ne":
+            newWidth = Math.max(MIN_SIZE, startWidth + dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
+            newY = startElementY + startHeight - newHeight;
+            break;
+          case "nw":
+            newWidth = Math.max(MIN_SIZE, startWidth - dx);
+            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
+            newX = startElementX + startWidth - newWidth;
+            newY = startElementY + startHeight - newHeight;
+            break;
+        }
+
+        setElements((prev) =>
+          prev.map((el) =>
+            el.id === elementId ? { ...el, x: newX, y: newY, width: newWidth, height: newHeight } : el
+          )
+        );
+      } else if (isPanning) {
+        const dx = e.clientX - lastMousePos.current.x;
+        const dy = e.clientY - lastMousePos.current.y;
+        setViewport((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+      }
+
+      if (placingObjectType) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const canvasPos = {
+            x: (e.clientX - rect.left - viewport.x) / viewport.zoom,
+            y: (e.clientY - rect.top - viewport.y) / viewport.zoom,
+          };
+          setPreviewPos(canvasPos);
+        }
+      }
+    }
+
+    function handleMouseUp() {
+      setIsPanning(false);
+      setResizingElement(null);
+      pendingResize.current = null;
+    }
+
+    async function handlePaste(e: ClipboardEvent) {
+      const { tilingMode, selectedElement, elements, viewport } = stateRef.current;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        if (item.type.indexOf("image") !== -1) {
+          const blob = item.getAsFile();
+          if (!blob) continue;
+
+          const url = URL.createObjectURL(blob);
+          const img = new Image();
+          img.src = url;
+
+          img.onload = () => {
+            setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), stateRef.current.elements]);
+
+            if (tilingMode) {
+              const selectedEl = selectedElement ? elements.find((el) => el.id === selectedElement) : null;
+
+              if (selectedEl) {
+                const { x, y } = calculateAdjacentPosition(
+                  selectedEl,
+                  elements,
+                  currentMousePos.current.x,
+                  currentMousePos.current.y,
+                  img.width,
+                  img.height,
+                  viewport
+                );
+
+                const newElement: CanvasElement = {
+                  id: crypto.randomUUID(),
+                  type: "image",
+                  x,
+                  y,
+                  width: img.width,
+                  height: img.height,
+                  content: url,
+                };
+                setElements((prev) => [...prev, newElement]);
+              } else {
+                const canvasPos = {
+                  x: (window.innerWidth / 2 - viewport.x) / viewport.zoom,
+                  y: (window.innerHeight / 2 - viewport.y) / viewport.zoom,
+                };
+                const cols = 4;
+                const rows = 3;
+                const spacing = 10;
+
+                for (let row = 0; row < rows; row++) {
+                  for (let col = 0; col < cols; col++) {
+                    const newElement: CanvasElement = {
+                      id: crypto.randomUUID(),
+                      type: "image",
+                      x: canvasPos.x + col * (img.width + spacing),
+                      y: canvasPos.y + row * (img.height + spacing),
+                      width: img.width,
+                      height: img.height,
+                      content: url,
+                    };
+                    setElements((prev) => [...prev, newElement]);
+                  }
+                }
+              }
+            } else {
+              const cursorPos = {
+                x: (currentMousePos.current.x - viewport.x) / viewport.zoom,
+                y: (currentMousePos.current.y - viewport.y) / viewport.zoom,
+              };
+
+              const newElement: CanvasElement = {
+                id: crypto.randomUUID(),
+                type: "image",
+                x: cursorPos.x - img.width / 2,
+                y: cursorPos.y - img.height / 2,
+                width: img.width,
+                height: img.height,
+                content: url,
+              };
+              setElements((prev) => [...prev, newElement]);
+            }
+          };
+        }
+      }
+    }
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousemove", trackMousePosition);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("paste", handlePaste);
+
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousemove", trackMousePosition);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("paste", handlePaste);
+    };
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-bg-deep text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
+          <p className="text-text-secondary font-mono">Loading canvas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
+      <CanvasHeader
+        canvasName={canvasName}
+        saveStatus={saveStatus}
+        objectCount={elements.length}
+        onBack={() => navigate("/")}
+      />
+
+      <CanvasToolbar
+        placingObjectType={placingObjectType}
+        tilingMode={tilingMode}
+        canUndo={history.length > 0}
+        canRedo={redoHistory.length > 0}
+        onToggleTextPlacement={() => setPlacingObjectType(placingObjectType === "text" ? null : "text")}
+        onImageButtonClick={() => fileInputRef.current?.click()}
+        onToggleTilingMode={setTilingMode}
+        onUndo={undo}
+        onRedo={redo}
+      />
+
+      <CanvasZoomControls zoom={viewport.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onResetZoom={resetZoom} />
+
+      <CanvasStatusBar viewport={viewport} objectCount={elements.length} />
+
+      {elements.length === 0 && <CanvasEmptyState />}
+
+      <div
+        ref={canvasRef}
+        className={`fixed inset-0 top-[73px] select-none ${
+          resizingElement ? "" : placingObjectType ? "cursor-crosshair" : "cursor-move"
+        }`}
+        style={{
+          backgroundImage: `
+            radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
+            radial-gradient(circle, rgba(212, 132, 94, 0.08) 1px, transparent 1px)
+          `,
+          backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
+          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.corner].cursor : undefined,
+        }}
+        onMouseDown={handleMouseDown}
+      >
+        <div
+          style={{
+            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+            transformOrigin: "0 0",
+          }}
+        >
+          <CanvasElementsLayer
+            elements={elements}
+            selectedElement={selectedElement}
+            editingElementId={editingElementId}
+            placingObjectType={placingObjectType}
+            previewPos={previewPos}
+            pendingImage={pendingImage}
+            onElementMouseDown={handleElementMouseDown}
+            onTextDoubleClick={handleTextDoubleClick}
+            onResizeStart={handleResizeStart}
+            onDeleteElement={deleteElement}
+            onTextEditSave={handleTextEditSave}
+            onTextEditCancel={handleTextEditCancel}
+          />
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+    </div>
+  );
+}
+
+function rectanglesOverlap(
   x1: number,
   y1: number,
   w1: number,
@@ -85,12 +782,11 @@ const rectanglesOverlap = (
   y2: number,
   w2: number,
   h2: number
-) => {
+) {
   return !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1);
-};
+}
 
-// Calculate position for adjacent tile based on cursor direction
-const calculateAdjacentPosition = (
+function calculateAdjacentPosition(
   selectedEl: CanvasElement,
   allElements: CanvasElement[],
   mouseScreenX: number,
@@ -98,28 +794,23 @@ const calculateAdjacentPosition = (
   newWidth: number,
   newHeight: number,
   viewport: ViewportState
-) => {
+) {
   const spacing = 10;
 
-  // Calculate selected element center in canvas coordinates
   const selectedCenterX = selectedEl.x + selectedEl.width / 2;
   const selectedCenterY = selectedEl.y + selectedEl.height / 2;
 
-  // Convert mouse position to canvas coordinates
   const mouseCanvas = {
     x: (mouseScreenX - viewport.x) / viewport.zoom,
     y: (mouseScreenY - viewport.y) / viewport.zoom,
   };
 
-  // Calculate angle from selected center to mouse position
   const dx = mouseCanvas.x - selectedCenterX;
   const dy = mouseCanvas.y - selectedCenterY;
   const angle = Math.atan2(dy, dx);
 
-  // Convert angle to degrees (0-360)
   const degrees = ((angle * 180) / Math.PI + 360) % 360;
 
-  // Determine direction and step vectors
   let baseX = selectedEl.x;
   let baseY = selectedEl.y;
   let stepX = 0;
@@ -187,7 +878,7 @@ const calculateAdjacentPosition = (
   }
 
   return { x, y };
-};
+}
 
 interface CanvasHeaderProps {
   canvasName: string;
@@ -607,762 +1298,5 @@ function CanvasElementsLayer({
         </div>
       )}
     </>
-  );
-}
-
-export default function Canvas() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-
-  // Persistence state
-  const [canvasName, setCanvasName] = useState("Untitled Canvas");
-  const [isLoading, setIsLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-
-  // Canvas state
-  const [elements, setElements] = useState<CanvasElement[]>([]);
-  const [history, setHistory] = useState<CanvasElement[][]>([]);
-  const [redoHistory, setRedoHistory] = useState<CanvasElement[][]>([]);
-  const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [tilingMode, setTilingMode] = useState(false);
-  const [placingObjectType, setPlacingObjectType] = useState<PlacementObjectType>(null);
-  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
-  const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
-  const [editingElementId, setEditingElementId] = useState<string | null>(null);
-  const [canvasId, setCanvasId] = useState<string | null>(null);
-
-  // Refs
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastMousePos = useRef({ x: 0, y: 0 });
-  const currentMousePos = useRef({ x: 0, y: 0 });
-
-  const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
-  const pendingResize = useRef<ResizeState | null>(null);
-
-  // Load canvas on mount
-  useEffect(() => {
-    const loadCanvas = async () => {
-      if (id === "new") {
-        if (createNewCanvasStartedRef.current) {
-          if (pendingNewCanvasIdRef.current !== null) {
-            navigate(`/canvas/${pendingNewCanvasIdRef.current}`, { replace: true });
-          }
-          setIsLoading(false);
-          return;
-        }
-        createNewCanvasStartedRef.current = true;
-        try {
-          const newCanvas = await canvasApi.create("Untitled Canvas");
-          pendingNewCanvasIdRef.current = newCanvas.id;
-          setCanvasId(newCanvas.id);
-          setCanvasName(newCanvas.name);
-          setViewport(newCanvas.viewport);
-          setElements([]);
-          navigate(`/canvas/${newCanvas.id}`, { replace: true });
-        } catch (error) {
-          console.error("Failed to create canvas:", error);
-          createNewCanvasStartedRef.current = false;
-          pendingNewCanvasIdRef.current = null;
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      createNewCanvasStartedRef.current = false;
-      pendingNewCanvasIdRef.current = null;
-
-      if (!id) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const canvas = await canvasApi.load(id);
-        setCanvasId(canvas.id);
-        setCanvasName(canvas.name);
-        setViewport(canvas.viewport);
-
-        // Convert base64 images to blob URLs for display
-        const elementsWithBlobs = canvas.elements.map((el) => {
-          if (el.type === "image" && isBase64(el.content)) {
-            return { ...el, content: base64ToBlobUrl(el.content) };
-          }
-          return el;
-        });
-        setElements(elementsWithBlobs);
-      } catch (error) {
-        console.error("Failed to load canvas:", error);
-      }
-      setIsLoading(false);
-    };
-
-    loadCanvas();
-  }, [id, navigate]);
-
-  // Auto-save with debounce
-  const saveCanvas = useCallback(async () => {
-    if (!canvasId || isLoading) return;
-
-    setSaveStatus("saving");
-    try {
-      // Convert blob URLs to base64 for persistence
-      const elementsToSave = await Promise.all(
-        elements.map(async (el) => {
-          if (el.type === "image" && isBlobUrl(el.content)) {
-            return { ...el, content: await blobUrlToBase64(el.content) };
-          }
-          return el;
-        })
-      );
-
-      await canvasApi.save({
-        id: canvasId,
-        name: canvasName,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        viewport,
-        elements: elementsToSave,
-      });
-      setSaveStatus("saved");
-    } catch (error) {
-      console.error("Failed to save canvas:", error);
-      setSaveStatus("error");
-    }
-  }, [canvasId, canvasName, elements, viewport, isLoading]);
-
-  // Debounced auto-save effect
-  useEffect(() => {
-    if (!canvasId || isLoading) return;
-
-    const timeoutId = setTimeout(() => {
-      saveCanvas();
-    }, AUTO_SAVE_DELAY);
-
-    return () => clearTimeout(timeoutId);
-  }, [elements, viewport, canvasId, isLoading, saveCanvas]);
-
-  // Reset save status after showing "saved"
-  useEffect(() => {
-    if (saveStatus === "saved") {
-      const timeoutId = setTimeout(() => setSaveStatus("idle"), 2000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [saveStatus]);
-
-  // Zoom controls
-  const zoomIn = () => {
-    setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }));
-  };
-
-  const zoomOut = () => {
-    setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }));
-  };
-
-  const resetZoom = () => {
-    setViewport({ x: 0, y: 0, zoom: 1 });
-  };
-
-  // History tracking for undo/redo
-  const pushHistory = () => {
-    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
-    setRedoHistory([]);
-  };
-
-  const undo = () => {
-    if (history.length === 0) return;
-    setRedoHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
-    const previous = history[history.length - 1];
-    setHistory((prev) => prev.slice(0, -1));
-    setElements(previous);
-    setSelectedElement(null);
-  };
-
-  const redo = () => {
-    if (redoHistory.length === 0) return;
-    setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), elements]);
-    const next = redoHistory[redoHistory.length - 1];
-    setRedoHistory((prev) => prev.slice(0, -1));
-    setElements(next);
-    setSelectedElement(null);
-  };
-
-  // Delete selected element
-  const deleteSelected = () => {
-    if (selectedElement) {
-      pushHistory();
-      setElements((prev) => prev.filter((el) => el.id !== selectedElement));
-      setSelectedElement(null);
-    }
-  };
-
-  // Delete a specific element by ID
-  const deleteElement = (elementId: string) => {
-    pushHistory();
-    setElements((prev) => prev.filter((el) => el.id !== elementId));
-    if (selectedElement === elementId) {
-      setSelectedElement(null);
-    }
-  };
-
-  // Cancel placement mode
-  const cancelPlacement = () => {
-    if (pendingImage) {
-      URL.revokeObjectURL(pendingImage.url);
-    }
-    setPlacingObjectType(null);
-    setPreviewPos(null);
-    setPendingImage(null);
-  };
-
-  // Handle resize start on corner handle
-  const handleResizeStart = (
-    e: React.MouseEvent,
-    elementId: string,
-    corner: ResizeCorner
-  ) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const element = elements.find((el) => el.id === elementId);
-    if (!element) return;
-
-    pushHistory();
-    pendingResize.current = {
-      elementId,
-      corner,
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: element.width,
-      startHeight: element.height,
-      startElementX: element.x,
-      startElementY: element.y,
-      aspectRatio: element.width / element.height,
-    };
-
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-  };
-
-  // Handle file selection for image upload
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = url;
-
-    img.onload = () => {
-      setPendingImage({ url, width: img.width, height: img.height });
-      setPlacingObjectType("image");
-    };
-
-    // Reset input so same file can be selected again
-    e.target.value = "";
-  };
-
-  // Keyboard shortcuts for zoom, delete, and cancel
-  useKeyboardShortcuts({
-    shortcuts: [
-      { key: '+', callback: zoomIn, description: 'Zoom in' },
-      { key: '=', callback: zoomIn, description: 'Zoom in' },
-      { key: '-', callback: zoomOut, description: 'Zoom out' },
-      { key: '0', callback: resetZoom, description: 'Reset zoom' },
-      { key: 'Delete', callback: deleteSelected, description: 'Delete selected element' },
-      { key: 'Backspace', callback: deleteSelected, description: 'Delete selected element' },
-      { key: 'Escape', callback: cancelPlacement, description: 'Cancel placement' },
-      { key: 'z', ctrlOrMeta: true, callback: undo, description: 'Undo' },
-      { key: 'y', ctrlOrMeta: true, callback: redo, description: 'Redo' },
-      { key: 'z', ctrlOrMeta: true, shift: true, callback: redo, description: 'Redo' },
-    ],
-  });
-
-  // Convert screen coordinates to canvas coordinates
-  const screenToCanvas = (screenX: number, screenY: number) => {
-    return {
-      x: (screenX - viewport.x) / viewport.zoom,
-      y: (screenY - viewport.y) / viewport.zoom,
-    };
-  };
-
-  // Refs to store current state values for stable event handlers
-  const stateRef = useRef({
-    isPanning,
-    resizingElement,
-    viewport,
-    placingObjectType,
-    tilingMode,
-    selectedElement,
-    elements,
-  });
-
-  // Update state ref in effect (not during render)
-  useEffect(() => {
-    stateRef.current = {
-      isPanning,
-      resizingElement,
-      viewport,
-      placingObjectType,
-      tilingMode,
-      selectedElement,
-      elements,
-    };
-  });
-
-  // Handle panning and placement
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Handle placement mode click
-    if (placingObjectType && e.button === 0 && !e.shiftKey) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
-        pushHistory();
-
-        if (placingObjectType === "text") {
-          const newElement: CanvasElement = {
-            id: crypto.randomUUID(),
-            type: "text",
-            x: canvasPos.x - 100,
-            y: canvasPos.y - 30,
-            width: 200,
-            height: 60,
-            content: "",
-          };
-          setElements((prev) => [...prev, newElement]);
-          setSelectedElement(newElement.id);
-          // Delay to ensure element is rendered before entering edit mode
-          setTimeout(() => setEditingElementId(newElement.id), 0);
-        } else if (placingObjectType === "image" && pendingImage) {
-          const newElement: CanvasElement = {
-            id: crypto.randomUUID(),
-            type: "image",
-            x: canvasPos.x - pendingImage.width / 2,
-            y: canvasPos.y - pendingImage.height / 2,
-            width: pendingImage.width,
-            height: pendingImage.height,
-            content: pendingImage.url,
-          };
-          setElements((prev) => [...prev, newElement]);
-          setSelectedElement(newElement.id);
-          setPendingImage(null);
-        }
-
-        setPlacingObjectType(null);
-        setPreviewPos(null);
-      }
-      return;
-    }
-
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-      // Middle mouse or Shift+Left mouse for panning
-      setIsPanning(true);
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
-    }
-  };
-
-
-  // Handle element drag start - uses small movement threshold to allow double-clicks
-  const handleElementMouseDown = (e: React.MouseEvent, elementId: string) => {
-    if (e.button !== 0 || e.shiftKey) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const element = elements.find((el) => el.id === elementId);
-    if (!element) return;
-
-    setSelectedElement(elementId);
-
-    const startClientX = e.clientX;
-    const startClientY = e.clientY;
-    const startX = element.x;
-    const startY = element.y;
-    let hasMoved = false;
-
-    const handleMove = (ev: MouseEvent) => {
-      const dxScreen = ev.clientX - startClientX;
-      const dyScreen = ev.clientY - startClientY;
-      const distance = Math.sqrt(dxScreen * dxScreen + dyScreen * dyScreen);
-
-      // Require a small threshold before starting a drag so clicks can still trigger double-click editing
-      if (!hasMoved && distance < 3) {
-        return;
-      }
-
-      if (!hasMoved) {
-        hasMoved = true;
-        pushHistory();
-      }
-
-      const { viewport: currentViewport } = stateRef.current;
-      const dx = dxScreen / currentViewport.zoom;
-      const dy = dyScreen / currentViewport.zoom;
-
-      setElements((prev) =>
-        prev.map((el) =>
-          el.id === elementId ? { ...el, x: startX + dx, y: startY + dy } : el
-        )
-      );
-    };
-
-    const handleUp = () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-  };
-
-  // Handle text editing - enter inline edit mode
-  const handleTextDoubleClick = (element: CanvasElement) => {
-    if (element.type === "text") {
-      setEditingElementId(element.id);
-    }
-  };
-
-  // Save text edit
-  const handleTextEditSave = (elementId: string, newContent: string) => {
-    pushHistory();
-    setElements((prev) =>
-      prev.map((el) =>
-        el.id === elementId ? { ...el, content: newContent || "Double-click to edit" } : el
-      )
-    );
-    setEditingElementId(null);
-  };
-
-  // Cancel text edit
-  const handleTextEditCancel = () => {
-    setEditingElementId(null);
-  };
-
-  // Effects - event listeners with stable handlers that read from stateRef
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Track global mouse position for paste direction calculation
-    const trackMousePosition = (e: MouseEvent) => {
-      currentMousePos.current = { x: e.clientX, y: e.clientY };
-    };
-
-    // Handle mouse wheel for zooming
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const { viewport } = stateRef.current;
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.1, Math.min(5, viewport.zoom * delta));
-
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        setViewport((prev) => ({
-          x: mouseX - (mouseX - prev.x) * (newZoom / prev.zoom),
-          y: mouseY - (mouseY - prev.y) * (newZoom / prev.zoom),
-          zoom: newZoom,
-        }));
-      }
-    };
-
-    // Handle mouse move for resize, and pan
-    const handleMouseMove = (e: MouseEvent) => {
-      const { isPanning, resizingElement, viewport, placingObjectType } = stateRef.current;
-
-      // Check if pending resize should become actual resize
-      if (pendingResize.current && !resizingElement) {
-        const dx = e.clientX - pendingResize.current.startX;
-        const dy = e.clientY - pendingResize.current.startY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance >= RESIZE_THRESHOLD) {
-          setResizingElement(pendingResize.current);
-        }
-      }
-
-      // Handle active resize
-      if (resizingElement) {
-        const {
-          elementId,
-          corner,
-          startX,
-          startWidth,
-          startHeight,
-          startElementX,
-          startElementY,
-          aspectRatio,
-        } = resizingElement;
-
-        const dx = (e.clientX - startX) / viewport.zoom;
-        const dy = (e.clientY - resizingElement.startY) / viewport.zoom;
-        const maintainAspect = !e.shiftKey;
-
-        let newWidth = startWidth;
-        let newHeight = startHeight;
-        let newX = startElementX;
-        let newY = startElementY;
-
-        switch (corner) {
-          case "se":
-            newWidth = Math.max(MIN_SIZE, startWidth + dx);
-            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
-            break;
-          case "sw":
-            newWidth = Math.max(MIN_SIZE, startWidth - dx);
-            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight + dy);
-            newX = startElementX + startWidth - newWidth;
-            break;
-          case "ne":
-            newWidth = Math.max(MIN_SIZE, startWidth + dx);
-            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
-            newY = startElementY + startHeight - newHeight;
-            break;
-          case "nw":
-            newWidth = Math.max(MIN_SIZE, startWidth - dx);
-            newHeight = maintainAspect ? newWidth / aspectRatio : Math.max(MIN_SIZE, startHeight - dy);
-            newX = startElementX + startWidth - newWidth;
-            newY = startElementY + startHeight - newHeight;
-            break;
-        }
-
-        setElements((prev) =>
-          prev.map((el) =>
-            el.id === elementId ? { ...el, x: newX, y: newY, width: newWidth, height: newHeight } : el
-          )
-        );
-      } else if (isPanning) {
-        const dx = e.clientX - lastMousePos.current.x;
-        const dy = e.clientY - lastMousePos.current.y;
-        setViewport((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
-      }
-
-      // Update preview position when in placement mode
-      if (placingObjectType) {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (rect) {
-          const canvasPos = {
-            x: (e.clientX - rect.left - viewport.x) / viewport.zoom,
-            y: (e.clientY - rect.top - viewport.y) / viewport.zoom,
-          };
-          setPreviewPos(canvasPos);
-        }
-      }
-    };
-
-    // Handle mouse up
-    const handleMouseUp = () => {
-      setIsPanning(false);
-      setResizingElement(null);
-      pendingResize.current = null;
-    };
-
-    // Handle paste from clipboard
-    const handlePaste = async (e: ClipboardEvent) => {
-      const { tilingMode, selectedElement, elements, viewport } = stateRef.current;
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        if (item.type.indexOf("image") !== -1) {
-          const blob = item.getAsFile();
-          if (!blob) continue;
-
-          const url = URL.createObjectURL(blob);
-          const img = new Image();
-          img.src = url;
-
-          img.onload = () => {
-            // Push history before adding new element
-            setHistory((prev) => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), stateRef.current.elements]);
-
-            if (tilingMode) {
-              const selectedEl = selectedElement ? elements.find((el) => el.id === selectedElement) : null;
-
-              if (selectedEl) {
-                const { x, y } = calculateAdjacentPosition(
-                  selectedEl,
-                  elements,
-                  currentMousePos.current.x,
-                  currentMousePos.current.y,
-                  img.width,
-                  img.height,
-                  viewport
-                );
-
-                const newElement: CanvasElement = {
-                  id: crypto.randomUUID(),
-                  type: "image",
-                  x,
-                  y,
-                  width: img.width,
-                  height: img.height,
-                  content: url,
-                };
-                setElements((prev) => [...prev, newElement]);
-              } else {
-                const canvasPos = {
-                  x: (window.innerWidth / 2 - viewport.x) / viewport.zoom,
-                  y: (window.innerHeight / 2 - viewport.y) / viewport.zoom,
-                };
-                const cols = 4;
-                const rows = 3;
-                const spacing = 10;
-
-                for (let row = 0; row < rows; row++) {
-                  for (let col = 0; col < cols; col++) {
-                    const newElement: CanvasElement = {
-                      id: crypto.randomUUID(),
-                      type: "image",
-                      x: canvasPos.x + col * (img.width + spacing),
-                      y: canvasPos.y + row * (img.height + spacing),
-                      width: img.width,
-                      height: img.height,
-                      content: url,
-                    };
-                    setElements((prev) => [...prev, newElement]);
-                  }
-                }
-              }
-            } else {
-              const cursorPos = {
-                x: (currentMousePos.current.x - viewport.x) / viewport.zoom,
-                y: (currentMousePos.current.y - viewport.y) / viewport.zoom,
-              };
-
-              const newElement: CanvasElement = {
-                id: crypto.randomUUID(),
-                type: "image",
-                x: cursorPos.x - img.width / 2,
-                y: cursorPos.y - img.height / 2,
-                width: img.width,
-                height: img.height,
-                content: url,
-              };
-              setElements((prev) => [...prev, newElement]);
-            }
-          };
-        }
-      }
-    };
-
-    canvas.addEventListener("wheel", handleWheel, { passive: false });
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mousemove", trackMousePosition);
-    window.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("paste", handlePaste);
-
-    return () => {
-      canvas.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mousemove", trackMousePosition);
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("paste", handlePaste);
-    };
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-bg-deep text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
-          <p className="text-text-secondary font-mono">Loading canvas...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
-      <CanvasHeader
-        canvasName={canvasName}
-        saveStatus={saveStatus}
-        objectCount={elements.length}
-        onBack={() => navigate("/")}
-      />
-
-      <CanvasToolbar
-        placingObjectType={placingObjectType}
-        tilingMode={tilingMode}
-        canUndo={history.length > 0}
-        canRedo={redoHistory.length > 0}
-        onToggleTextPlacement={() => setPlacingObjectType(placingObjectType === "text" ? null : "text")}
-        onImageButtonClick={() => fileInputRef.current?.click()}
-        onToggleTilingMode={setTilingMode}
-        onUndo={undo}
-        onRedo={redo}
-      />
-
-      <CanvasZoomControls
-        zoom={viewport.zoom}
-        onZoomIn={zoomIn}
-        onZoomOut={zoomOut}
-        onResetZoom={resetZoom}
-      />
-
-      <CanvasStatusBar viewport={viewport} objectCount={elements.length} />
-
-      {elements.length === 0 && <CanvasEmptyState />}
-
-      {/* Canvas Area */}
-      <div
-        ref={canvasRef}
-        className={`fixed inset-0 top-[73px] select-none ${
-          resizingElement
-            ? ""
-            : placingObjectType
-              ? "cursor-crosshair"
-              : "cursor-move"
-        }`}
-        style={{
-          backgroundImage: `
-            radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
-            radial-gradient(circle, rgba(212, 132, 94, 0.08) 1px, transparent 1px)
-          `,
-          backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
-          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.corner].cursor : undefined,
-        }}
-        onMouseDown={handleMouseDown}
-      >
-        {/* Render elements */}
-        <div
-          style={{
-            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
-            transformOrigin: "0 0",
-          }}
-        >
-          <CanvasElementsLayer
-            elements={elements}
-            selectedElement={selectedElement}
-            editingElementId={editingElementId}
-            placingObjectType={placingObjectType}
-            previewPos={previewPos}
-            pendingImage={pendingImage}
-            onElementMouseDown={handleElementMouseDown}
-            onTextDoubleClick={handleTextDoubleClick}
-            onResizeStart={handleResizeStart}
-            onDeleteElement={deleteElement}
-            onTextEditSave={handleTextEditSave}
-            onTextEditCancel={handleTextEditCancel}
-          />
-        </div>
-      </div>
-
-      {/* Hidden file input for image upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileSelect}
-      />
-    </div>
   );
 }
