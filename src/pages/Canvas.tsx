@@ -40,6 +40,10 @@ import type { CanvasElement, ViewportState } from "@/types/canvas";
 const MAX_UNDO_HISTORY = 5;
 const AUTO_SAVE_DELAY = 2000;
 
+/** Refs persist across Strict Mode remounts so we only create one canvas when visiting /canvas/new */
+const createNewCanvasStartedRef = { current: false };
+const pendingNewCanvasIdRef = { current: null as string | null };
+
 // Helper function to check if two rectangles overlap
 const rectanglesOverlap = (
   x1: number,
@@ -154,6 +158,12 @@ const calculateAdjacentPosition = (
   return { x, y };
 };
 
+/** Reset refs so tests can assert single create. Call from tests only. */
+export function __testingResetPendingNewCanvasId() {
+  createNewCanvasStartedRef.current = false;
+  pendingNewCanvasIdRef.current = null;
+}
+
 export default function Canvas() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -222,22 +232,34 @@ export default function Canvas() {
   useEffect(() => {
     const loadCanvas = async () => {
       if (id === "new") {
-        // Create a new canvas
+        if (createNewCanvasStartedRef.current) {
+          if (pendingNewCanvasIdRef.current !== null) {
+            navigate(`/canvas/${pendingNewCanvasIdRef.current}`, { replace: true });
+          }
+          setIsLoading(false);
+          return;
+        }
+        createNewCanvasStartedRef.current = true;
         setIsNewCanvas(true);
         try {
           const newCanvas = await canvasApi.create("Untitled Canvas");
+          pendingNewCanvasIdRef.current = newCanvas.id;
           setCanvasId(newCanvas.id);
           setCanvasName(newCanvas.name);
           setViewport(newCanvas.viewport);
           setElements([]);
-          // Navigate to the new canvas URL
           navigate(`/canvas/${newCanvas.id}`, { replace: true });
         } catch (error) {
           console.error("Failed to create canvas:", error);
+          createNewCanvasStartedRef.current = false;
+          pendingNewCanvasIdRef.current = null;
         }
         setIsLoading(false);
         return;
       }
+
+      createNewCanvasStartedRef.current = false;
+      pendingNewCanvasIdRef.current = null;
 
       if (!id) {
         setIsLoading(false);

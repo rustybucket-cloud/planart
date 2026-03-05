@@ -1,25 +1,51 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router'
-import Canvas from './Canvas'
+import Canvas, { __testingResetPendingNewCanvasId } from './Canvas'
+import { canvasApi } from '@/services/canvasApi'
+import type { CanvasData } from '@/types/canvas'
 
 const mockNavigate = vi.fn()
+const mockUseParams = vi.fn(() => ({ id: 'test-canvas' } as { id: string }))
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router')
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useParams: () => ({ id: 'test-canvas' }),
+    useParams: () => mockUseParams(),
   }
 })
 
+vi.mock('@/services/canvasApi', () => ({
+  canvasApi: {
+    create: vi.fn(),
+    load: vi.fn(),
+    save: vi.fn(),
+    list: vi.fn(),
+    delete: vi.fn(),
+  },
+}))
+
+const defaultCanvas: CanvasData = {
+  id: 'test-canvas',
+  name: 'Test Canvas',
+  createdAt: '',
+  updatedAt: '',
+  viewport: { x: 0, y: 0, zoom: 1 },
+  elements: [],
+}
+
 // Helper to render Canvas with router
-const renderCanvas = () => {
-  return render(
+const renderCanvas = async () => {
+  const result = render(
     <BrowserRouter>
       <Canvas />
     </BrowserRouter>
   )
+  await waitFor(() => {
+    expect(screen.queryByText('Loading canvas...')).not.toBeInTheDocument()
+  })
+  return result
 }
 
 // Helper to get canvas area (the fixed div with inset-0)
@@ -30,12 +56,13 @@ const getCanvasArea = () => {
 describe('Canvas Page', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
+    vi.mocked(canvasApi.load).mockResolvedValue(defaultCanvas)
   })
 
   describe('Text Placement Mode', () => {
     it('should enter placement mode when clicking Text button', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const textButton = screen.getByTitle('Add Text (T)')
       await user.click(textButton)
@@ -51,7 +78,7 @@ describe('Canvas Page', () => {
 
     it('should exit placement mode when clicking Text button again', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const textButton = screen.getByTitle('Add Text (T)')
 
@@ -66,7 +93,7 @@ describe('Canvas Page', () => {
 
     it('should exit placement mode when pressing Escape', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const textButton = screen.getByTitle('Add Text (T)')
       await user.click(textButton)
@@ -82,7 +109,7 @@ describe('Canvas Page', () => {
 
     it('should place text element on canvas click during placement mode', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const textButton = screen.getByTitle('Add Text (T)')
       await user.click(textButton)
@@ -119,7 +146,7 @@ describe('Canvas Page', () => {
 
     it('should save text on Enter key', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
       const textarea = await placeTextElement(user)
 
       // Type some text and press Enter
@@ -134,7 +161,7 @@ describe('Canvas Page', () => {
 
     it('should cancel edit on Escape key', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
       const textarea = await placeTextElement(user)
 
       // Type some text then Escape
@@ -148,7 +175,7 @@ describe('Canvas Page', () => {
 
     it('should save text on blur', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
       const textarea = await placeTextElement(user)
 
       // Type some text
@@ -167,7 +194,7 @@ describe('Canvas Page', () => {
 
     it('should show placeholder when saving empty text', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
       const textarea = await placeTextElement(user)
 
       // Just press Enter without typing
@@ -183,7 +210,7 @@ describe('Canvas Page', () => {
   describe('Double-click to Edit', () => {
     it('should enter edit mode on double-click', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       // First place a text element
       const textButton = screen.getByTitle('Add Text (T)')
@@ -219,7 +246,7 @@ describe('Canvas Page', () => {
   describe('Zoom Controls', () => {
     it('should zoom in when clicking zoom in button', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomInButton = screen.getByTitle('Zoom In (+)')
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
@@ -232,7 +259,7 @@ describe('Canvas Page', () => {
 
     it('should zoom out when clicking zoom out button', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomOutButton = screen.getByTitle('Zoom Out (-)')
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
@@ -243,7 +270,7 @@ describe('Canvas Page', () => {
 
     it('should reset zoom when clicking zoom display', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomInButton = screen.getByTitle('Zoom In (+)')
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
@@ -262,7 +289,7 @@ describe('Canvas Page', () => {
   describe('Keyboard Shortcuts', () => {
     it('should zoom in with + key', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
       expect(zoomDisplay).toHaveTextContent('100%')
@@ -273,7 +300,7 @@ describe('Canvas Page', () => {
 
     it('should zoom out with - key', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
 
@@ -283,7 +310,7 @@ describe('Canvas Page', () => {
 
     it('should reset zoom with 0 key', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const zoomDisplay = screen.getByTitle('Reset Zoom (0)')
 
@@ -299,7 +326,7 @@ describe('Canvas Page', () => {
   describe('Image Upload and Placement', () => {
     it('should trigger file input when clicking image button', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       // Get the hidden file input
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -313,7 +340,7 @@ describe('Canvas Page', () => {
     })
 
     it('should enter image placement mode after file selection', async () => {
-      renderCanvas()
+      await renderCanvas()
 
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
 
@@ -352,7 +379,7 @@ describe('Canvas Page', () => {
 
     it('should exit image placement mode when pressing Escape', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
       const file = new File(['dummy'], 'test.png', { type: 'image/png' })
@@ -390,7 +417,7 @@ describe('Canvas Page', () => {
   describe('Context Menu', () => {
     it('should delete element via context menu', async () => {
       const user = userEvent.setup()
-      renderCanvas()
+      await renderCanvas()
 
       // Place a text element
       const textButton = screen.getByTitle('Add Text (T)')
@@ -427,6 +454,34 @@ describe('Canvas Page', () => {
       // Element should be removed
       await waitFor(() => {
         expect(screen.queryByText('Delete Me')).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('New canvas creation', () => {
+    beforeEach(() => {
+      __testingResetPendingNewCanvasId()
+      mockUseParams.mockReturnValue({ id: 'new' })
+      vi.mocked(canvasApi.create).mockResolvedValue({
+        id: 'new-canvas-id',
+        name: 'Untitled Canvas',
+        createdAt: '',
+        updatedAt: '',
+        viewport: { x: 0, y: 0, zoom: 1 },
+        elements: [],
+      })
+    })
+
+    it('should call canvasApi.create exactly once when id is "new"', async () => {
+      render(
+        <BrowserRouter>
+          <Canvas />
+        </BrowserRouter>
+      )
+
+      await waitFor(() => {
+        expect(canvasApi.create).toHaveBeenCalledTimes(1)
+        expect(canvasApi.create).toHaveBeenCalledWith('Untitled Canvas')
       })
     })
   })
