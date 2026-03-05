@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   ArrowLeft,
-  Share,
+  Download,
   Trash2,
   Copy,
   Type,
@@ -34,6 +34,17 @@ import {
   ContextMenuSeparator,
   ContextMenuLabel,
 } from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toPng } from "html-to-image";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import { canvasApi } from "@/services/canvasApi";
 import {
   blobUrlToBase64,
@@ -152,6 +163,9 @@ export default function Canvas() {
   const [groupResizing, setGroupResizing] = useState<GroupResizeState | null>(null);
   const pendingGroupResize = useRef<GroupResizeState | null>(null);
   const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function loadCanvas() {
@@ -1150,6 +1164,42 @@ export default function Canvas() {
     };
   }, [isLoading]);
 
+  async function handleExportPng() {
+    const container = exportContainerRef.current;
+    if (!container || elements.length === 0) return;
+
+    setIsExporting(true);
+    try {
+      // Generate PNG data URL
+      const dataUrl = await toPng(container, {
+        backgroundColor: "#1a1d28",
+        pixelRatio: 2,
+      });
+
+      // Show native save dialog
+      const defaultFileName = `${canvasName.replace(/[^a-z0-9]/gi, "_")}.png`;
+      const filePath = await save({
+        defaultPath: defaultFileName,
+        filters: [{ name: "PNG Image", extensions: ["png"] }],
+      });
+
+      if (filePath) {
+        // Convert data URL to binary
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+        const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+        
+        // Write file to chosen location
+        await writeFile(filePath, binaryData);
+      }
+      
+      setIsExportDialogOpen(false);
+    } catch (error) {
+      console.error("Export failed:", error);
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-bg-deep text-white flex items-center justify-center">
@@ -1169,6 +1219,7 @@ export default function Canvas() {
         objectCount={elements.length}
         onBack={() => navigate("/")}
         onRename={setCanvasName}
+        onExport={() => setIsExportDialogOpen(true)}
       />
 
       <CanvasToolbar
@@ -1305,6 +1356,16 @@ export default function Canvas() {
           );
         })()}
       </ContextMenu>
+
+      <ExportDialog
+        open={isExportDialogOpen}
+        onOpenChange={setIsExportDialogOpen}
+        elements={elements}
+        canvasName={canvasName}
+        isExporting={isExporting}
+        onExport={handleExportPng}
+        exportContainerRef={exportContainerRef}
+      />
 
       <input
         ref={fileInputRef}
@@ -1567,9 +1628,10 @@ interface CanvasHeaderProps {
   objectCount: number;
   onBack: () => void;
   onRename: (newName: string) => void;
+  onExport: () => void;
 }
 
-function CanvasHeader({ canvasName, saveStatus, objectCount, onBack, onRename }: CanvasHeaderProps) {
+function CanvasHeader({ canvasName, saveStatus, objectCount, onBack, onRename, onExport }: CanvasHeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(canvasName);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1665,8 +1727,14 @@ function CanvasHeader({ canvasName, saveStatus, objectCount, onBack, onRename }:
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 hover:text-white transition-all duration-300">
-                  <Share className="w-5 h-5" strokeWidth={2} />
+                <Button
+                  onClick={onExport}
+                  variant="ghost"
+                  size="icon"
+                  className="hover:bg-terracotta/10 hover:text-white transition-all duration-300"
+                  title="Export Canvas"
+                >
+                  <Download className="w-5 h-5" strokeWidth={2} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -2128,4 +2196,306 @@ function CanvasElementsLayer({
       )}
     </>
   );
+}
+
+interface ExportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  elements: CanvasElement[];
+  canvasName: string;
+  isExporting: boolean;
+  onExport: () => void;
+  exportContainerRef: React.RefObject<HTMLDivElement | null>;
+}
+
+function ExportDialog({
+  open,
+  onOpenChange,
+  elements,
+  canvasName,
+  isExporting,
+  onExport,
+  exportContainerRef,
+}: ExportDialogProps) {
+  const [showFullPreview, setShowFullPreview] = useState(false);
+  const bounds = getElementsBounds(elements);
+
+  // Calculate scale to fit preview in container
+  const previewMaxWidth = 400;
+  const previewMaxHeight = 200;
+  const previewScale = bounds
+    ? Math.min(previewMaxWidth / bounds.width, previewMaxHeight / bounds.height, 1)
+    : 1;
+
+  // Calculate scale for full preview (90% of viewport)
+  const fullPreviewScale = bounds
+    ? Math.min(
+        (window.innerWidth * 0.9) / bounds.width,
+        (window.innerHeight * 0.9) / bounds.height,
+        1
+      )
+    : 1;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="bg-bg-panel/95 backdrop-blur-xl border-terracotta/20 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle
+              className="text-xl font-bold"
+              style={{ fontFamily: "'Crimson Pro', serif" }}
+            >
+              Export Canvas
+            </DialogTitle>
+            <DialogDescription className="text-text-secondary">
+              Export &ldquo;{canvasName}&rdquo; as a PNG image.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {elements.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No elements to export.</p>
+                <p className="text-sm mt-1">Add some images or text to your canvas first.</p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 text-sm text-text-secondary space-y-1">
+                  <p>Elements: {elements.length}</p>
+                  {bounds && (
+                    <p>
+                      Size: {Math.round(bounds.width)} × {Math.round(bounds.height)} px
+                    </p>
+                  )}
+                </div>
+
+                {/* Clickable preview thumbnail */}
+                <button
+                  type="button"
+                  onClick={() => setShowFullPreview(true)}
+                  className="relative w-full bg-bg-deep rounded-lg overflow-hidden border border-terracotta/10 hover:border-terracotta/30 transition-colors cursor-pointer group"
+                  style={{
+                    height: bounds ? Math.min(previewMaxHeight, bounds.height * previewScale) : previewMaxHeight,
+                  }}
+                >
+                  <div
+                    className="absolute top-0 left-0 origin-top-left"
+                    style={{
+                      width: bounds?.width ?? previewMaxWidth,
+                      height: bounds?.height ?? previewMaxHeight,
+                      transform: `scale(${previewScale})`,
+                    }}
+                  >
+                    {elements.map((element) => (
+                      <div
+                        key={element.id}
+                        className="absolute"
+                        style={{
+                          left: bounds ? element.x - bounds.x : element.x,
+                          top: bounds ? element.y - bounds.y : element.y,
+                          width: element.width,
+                          height: element.height,
+                        }}
+                      >
+                        {element.type === "image" ? (
+                          <img
+                            src={element.content}
+                            alt="Canvas element"
+                            className="w-full h-full object-cover rounded-lg"
+                            draggable={false}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center p-4">
+                            <p
+                              className="text-center break-words text-white"
+                              style={{
+                                fontFamily: "'Crimson Pro', serif",
+                                fontSize: `${getTextFontSize(element.fontScale)}px`,
+                              }}
+                            >
+                              {element.content}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                    <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to preview
+                    </span>
+                  </div>
+                </button>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="border-terracotta/20 hover:bg-terracotta/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={onExport}
+              disabled={isExporting || elements.length === 0}
+              className="bg-gradient-to-br from-terracotta to-warm-orange hover:shadow-lg hover:shadow-terracotta/30 transition-all duration-300 disabled:opacity-50"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export PNG
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hidden export container - actual size for rendering (only rendered when dialog is open) */}
+      {open && (
+        <div className="fixed -left-[99999px] -top-[99999px]">
+          <div
+            ref={exportContainerRef}
+            className="relative bg-bg-deep"
+            style={{
+              width: bounds?.width ?? 0,
+              height: bounds?.height ?? 0,
+            }}
+          >
+            {elements.map((element) => (
+              <div
+                key={element.id}
+                className="absolute"
+                style={{
+                  left: bounds ? element.x - bounds.x : element.x,
+                  top: bounds ? element.y - bounds.y : element.y,
+                  width: element.width,
+                  height: element.height,
+                }}
+              >
+                {element.type === "image" ? (
+                  <img
+                    src={element.content}
+                    alt="Canvas element"
+                    className="w-full h-full object-cover rounded-lg"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <p
+                      className="text-center break-words text-white"
+                      style={{
+                        fontFamily: "'Crimson Pro', serif",
+                        fontSize: `${getTextFontSize(element.fontScale)}px`,
+                      }}
+                    >
+                      {element.content}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Full preview overlay */}
+      {showFullPreview && bounds && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer animate-fade-in"
+          onClick={() => setShowFullPreview(false)}
+        >
+          <div
+            className="relative bg-bg-deep rounded-lg shadow-2xl overflow-hidden"
+            style={{
+              width: bounds.width * fullPreviewScale,
+              height: bounds.height * fullPreviewScale,
+            }}
+          >
+            <div
+              className="absolute top-0 left-0 origin-top-left"
+              style={{
+                width: bounds.width,
+                height: bounds.height,
+                transform: `scale(${fullPreviewScale})`,
+              }}
+            >
+              {elements.map((element) => (
+                <div
+                  key={element.id}
+                  className="absolute"
+                  style={{
+                    left: element.x - bounds.x,
+                    top: element.y - bounds.y,
+                    width: element.width,
+                    height: element.height,
+                  }}
+                >
+                  {element.type === "image" ? (
+                    <img
+                      src={element.content}
+                      alt="Canvas element"
+                      className="w-full h-full object-cover rounded-lg"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <p
+                        className="text-center break-words text-white"
+                        style={{
+                          fontFamily: "'Crimson Pro', serif",
+                          fontSize: `${getTextFontSize(element.fontScale)}px`,
+                        }}
+                      >
+                        {element.content}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+            onClick={() => setShowFullPreview(false)}
+          >
+            <span className="text-sm">Press anywhere to close</span>
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function getElementsBounds(elements: CanvasElement[]): { x: number; y: number; width: number; height: number } | null {
+  if (elements.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const el of elements) {
+    minX = Math.min(minX, el.x);
+    minY = Math.min(minY, el.y);
+    maxX = Math.max(maxX, el.x + el.width);
+    maxY = Math.max(maxY, el.y + el.height);
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 }

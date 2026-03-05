@@ -819,4 +819,113 @@ describe('Canvas Page', () => {
       expect(selectionRect).not.toBeInTheDocument()
     })
   })
+
+  describe('Export Dialog', () => {
+    it('should open export dialog when clicking export button', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+        expect(screen.getByText('Export Canvas')).toBeInTheDocument()
+      })
+    })
+
+    it('should show empty state message when canvas has no elements', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        expect(screen.getByText('No elements to export.')).toBeInTheDocument()
+      })
+    })
+
+    it('should show element count when canvas has elements', async () => {
+      const canvasWithElements: CanvasData = {
+        id: 'test-canvas',
+        name: 'Test Canvas',
+        createdAt: '',
+        updatedAt: '',
+        viewport: { x: 0, y: 0, zoom: 1 },
+        elements: [
+          { id: 'el-1', type: 'text', x: 100, y: 100, width: 200, height: 60, content: 'Element One' },
+          { id: 'el-2', type: 'text', x: 400, y: 100, width: 200, height: 60, content: 'Element Two' },
+        ],
+      }
+      vi.mocked(canvasApi.load).mockResolvedValue(canvasWithElements)
+
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        expect(screen.getByText('Elements: 2')).toBeInTheDocument()
+      })
+    })
+
+    it('should close dialog when clicking cancel', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+      })
+
+      const cancelButton = screen.getByRole('button', { name: /cancel/i })
+      await user.click(cancelButton)
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
+    })
+
+    it('should have disabled export button when no elements', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        const pngExportButton = screen.getByRole('button', { name: /export png/i })
+        expect(pngExportButton).toBeDisabled()
+      })
+    })
+
+    it('should have enabled export button when canvas has elements', async () => {
+      const canvasWithElements: CanvasData = {
+        id: 'test-canvas',
+        name: 'Test Canvas',
+        createdAt: '',
+        updatedAt: '',
+        viewport: { x: 0, y: 0, zoom: 1 },
+        elements: [
+          { id: 'el-1', type: 'text', x: 100, y: 100, width: 200, height: 60, content: 'Test Element' },
+        ],
+      }
+      vi.mocked(canvasApi.load).mockResolvedValue(canvasWithElements)
+
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const exportButton = screen.getByTitle('Export Canvas')
+      await user.click(exportButton)
+
+      await waitFor(() => {
+        const pngExportButton = screen.getByRole('button', { name: /export png/i })
+        expect(pngExportButton).toBeEnabled()
+      })
+    })
+  })
 })

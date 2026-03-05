@@ -84,8 +84,7 @@ fn create_canvas(app: tauri::AppHandle, name: String) -> Result<CanvasData, Stri
     let file_path = canvases_dir.join(format!("{}.json", id));
     let json = serde_json::to_string_pretty(&canvas)
         .map_err(|e| format!("Failed to serialize canvas: {}", e))?;
-    fs::write(&file_path, json)
-        .map_err(|e| format!("Failed to write canvas file: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write canvas file: {}", e))?;
 
     Ok(canvas)
 }
@@ -97,8 +96,7 @@ fn save_canvas(app: tauri::AppHandle, canvas: CanvasData) -> Result<(), String> 
 
     let json = serde_json::to_string_pretty(&canvas)
         .map_err(|e| format!("Failed to serialize canvas: {}", e))?;
-    fs::write(&file_path, json)
-        .map_err(|e| format!("Failed to write canvas file: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write canvas file: {}", e))?;
 
     Ok(())
 }
@@ -108,10 +106,10 @@ fn load_canvas(app: tauri::AppHandle, id: String) -> Result<CanvasData, String> 
     let canvases_dir = get_canvases_dir(&app)?;
     let file_path = canvases_dir.join(format!("{}.json", id));
 
-    let json = fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read canvas file: {}", e))?;
-    let canvas: CanvasData = serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse canvas: {}", e))?;
+    let json =
+        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read canvas file: {}", e))?;
+    let canvas: CanvasData =
+        serde_json::from_str(&json).map_err(|e| format!("Failed to parse canvas: {}", e))?;
 
     Ok(canvas)
 }
@@ -121,8 +119,8 @@ fn list_canvases(app: tauri::AppHandle) -> Result<Vec<CanvasSummary>, String> {
     let canvases_dir = get_canvases_dir(&app)?;
     let mut summaries = Vec::new();
 
-    let entries = fs::read_dir(&canvases_dir)
-        .map_err(|e| format!("Failed to read canvases dir: {}", e))?;
+    let entries =
+        fs::read_dir(&canvases_dir).map_err(|e| format!("Failed to read canvases dir: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -154,8 +152,7 @@ fn delete_canvas(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let canvases_dir = get_canvases_dir(&app)?;
     let file_path = canvases_dir.join(format!("{}.json", id));
 
-    fs::remove_file(&file_path)
-        .map_err(|e| format!("Failed to delete canvas file: {}", e))?;
+    fs::remove_file(&file_path).map_err(|e| format!("Failed to delete canvas file: {}", e))?;
 
     Ok(())
 }
@@ -165,6 +162,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             create_canvas,
             save_canvas,

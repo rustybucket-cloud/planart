@@ -82,6 +82,23 @@ When no placement tool is active, left-clicking and dragging on empty canvas spa
 - **Deselect**: Clicking on empty space or pressing Escape clears the selection.
 - **Tiling mode**: Tiling snap is only applied when dragging a single element; multi-element drags move freely.
 
+## Export
+
+The canvas can be exported as a PNG image via the Export button in the header:
+
+- **Export dialog**: Clicking the Export button (download icon) opens a dialog with:
+  - A preview of all canvas elements
+  - Element count and estimated dimensions
+  - Export and Cancel buttons
+- **Empty state**: If no elements exist, the dialog shows an empty state message and the Export button is disabled.
+- **Native save dialog**: Clicking Export PNG opens the system's native file save dialog, allowing users to choose the save location and filename.
+- **PNG export**: Uses `html-to-image` library to capture the canvas elements with:
+  - 2x pixel ratio for high quality
+  - Deep background color (#1a1d28)
+  - All elements positioned relative to their bounding box
+- **File naming**: The default filename is based on the canvas name with special characters replaced by underscores.
+- **Tauri plugins**: Uses `@tauri-apps/plugin-dialog` for the save dialog and `@tauri-apps/plugin-fs` for writing the file.
+
 ## Related Files
 
 - `src/pages/Canvas.tsx` - Main canvas page UI and interaction orchestration
