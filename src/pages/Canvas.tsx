@@ -773,6 +773,7 @@ export default function Canvas() {
         saveStatus={saveStatus}
         objectCount={elements.length}
         onBack={() => navigate("/")}
+        onRename={setCanvasName}
       />
 
       <CanvasToolbar
@@ -1063,9 +1064,46 @@ interface CanvasHeaderProps {
   saveStatus: SaveStatus;
   objectCount: number;
   onBack: () => void;
+  onRename: (newName: string) => void;
 }
 
-function CanvasHeader({ canvasName, saveStatus, objectCount, onBack }: CanvasHeaderProps) {
+function CanvasHeader({ canvasName, saveStatus, objectCount, onBack, onRename }: CanvasHeaderProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(canvasName);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cancelledRef = useRef(false);
+
+  function handleDoubleClick() {
+    setEditValue(canvasName);
+    cancelledRef.current = false;
+    setIsEditing(true);
+  }
+
+  function commitRename() {
+    if (cancelledRef.current) return;
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== canvasName) {
+      onRename(trimmed);
+    }
+    setIsEditing(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      commitRename();
+    } else if (e.key === "Escape") {
+      cancelledRef.current = true;
+      setIsEditing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
   return (
     <header className="border-b border-terracotta/20 bg-bg-panel/80 backdrop-blur-xl sticky top-0 z-50 shadow-lg shadow-black/20">
       <div className="max-w-[1800px] mx-auto px-8 py-4 flex items-center justify-between">
@@ -1079,9 +1117,25 @@ function CanvasHeader({ canvasName, saveStatus, objectCount, onBack }: CanvasHea
             <ArrowLeft className="w-5 h-5" strokeWidth={2} />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Crimson Pro', serif" }}>
-              {canvasName}
-            </h1>
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={handleKeyDown}
+                className="text-xl font-bold tracking-tight bg-transparent border-b-2 border-terracotta/60 outline-none text-white px-0 py-0"
+                style={{ fontFamily: "'Crimson Pro', serif" }}
+              />
+            ) : (
+              <h1
+                className="text-xl font-bold tracking-tight cursor-pointer hover:text-terracotta transition-colors duration-200"
+                style={{ fontFamily: "'Crimson Pro', serif" }}
+                onDoubleClick={handleDoubleClick}
+              >
+                {canvasName}
+              </h1>
+            )}
             <div className="flex items-center gap-2">
               {saveStatus === "saving" && (
                 <span className="text-xs text-text-secondary font-mono flex items-center gap-1">

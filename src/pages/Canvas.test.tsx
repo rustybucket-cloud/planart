@@ -244,6 +244,68 @@ describe('Canvas Page', () => {
     })
   })
 
+  describe('Canvas Rename', () => {
+    it('should show input when double-clicking canvas name', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvasName = screen.getByText('Test Canvas')
+      await user.dblClick(canvasName)
+
+      const input = screen.getByDisplayValue('Test Canvas')
+      expect(input.tagName).toBe('INPUT')
+    })
+
+    it('should rename canvas when pressing Enter', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvasName = screen.getByText('Test Canvas')
+      await user.dblClick(canvasName)
+
+      const input = screen.getByDisplayValue('Test Canvas')
+      await user.clear(input)
+      await user.type(input, 'Renamed Canvas{Enter}')
+
+      expect(screen.getByText('Renamed Canvas')).toBeInTheDocument()
+      expect(screen.queryByDisplayValue('Renamed Canvas')).not.toBeInTheDocument()
+    })
+
+    it('should rename canvas on blur', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvasName = screen.getByText('Test Canvas')
+      await user.dblClick(canvasName)
+
+      const input = screen.getByDisplayValue('Test Canvas')
+      await user.clear(input)
+      await user.type(input, 'Blur Rename')
+
+      await act(async () => {
+        fireEvent.blur(input)
+      })
+
+      expect(screen.getByText('Blur Rename')).toBeInTheDocument()
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    it('should not rename canvas when pressing Escape', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      const canvasName = screen.getByText('Test Canvas')
+      await user.dblClick(canvasName)
+
+      const input = screen.getByDisplayValue('Test Canvas')
+      await user.clear(input)
+      await user.type(input, 'Should Not Save{Escape}')
+
+      expect(screen.getByText('Test Canvas')).toBeInTheDocument()
+      expect(screen.queryByText('Should Not Save')).not.toBeInTheDocument()
+    })
+  })
+
   describe('Zoom Controls', () => {
     it('should zoom in when clicking zoom in button', async () => {
       const user = userEvent.setup()
