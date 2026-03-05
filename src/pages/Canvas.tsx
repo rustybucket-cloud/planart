@@ -70,6 +70,14 @@ interface ResizeState {
   startFontScale: number;
 }
 
+interface GroupResizeState {
+  handle: ResizeHandle;
+  startX: number;
+  startY: number;
+  startBounds: { x: number; y: number; width: number; height: number };
+  originalElements: Map<string, { x: number; y: number; width: number; height: number; fontScale: number }>;
+}
+
 interface BoxSelectState {
   startScreenX: number;
   startScreenY: number;
@@ -137,6 +145,8 @@ export default function Canvas() {
   const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
   const pendingResize = useRef<ResizeState | null>(null);
   const [selectedElements, setSelectedElements] = useState<string[]>([]);
+  const [groupResizing, setGroupResizing] = useState<GroupResizeState | null>(null);
+  const pendingGroupResize = useRef<GroupResizeState | null>(null);
   const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
 
   useEffect(() => {
@@ -385,6 +395,40 @@ export default function Canvas() {
     lastMousePos.current = { x: e.clientX, y: e.clientY };
   }
 
+  function handleGroupResizeStart(e: React.MouseEvent, handle: ResizeHandle) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const bounds = getSelectionBounds(elements, selectedElements);
+    if (!bounds) return;
+
+    pushHistory();
+
+    const originalElements = new Map<string, { x: number; y: number; width: number; height: number; fontScale: number }>();
+    for (const id of selectedElements) {
+      const el = elements.find((e) => e.id === id);
+      if (el) {
+        originalElements.set(id, {
+          x: el.x,
+          y: el.y,
+          width: el.width,
+          height: el.height,
+          fontScale: el.fontScale ?? 1,
+        });
+      }
+    }
+
+    pendingGroupResize.current = {
+      handle,
+      startX: e.clientX,
+      startY: e.clientY,
+      startBounds: bounds,
+      originalElements,
+    };
+
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  }
+
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -494,6 +538,7 @@ export default function Canvas() {
     selectedElements,
     elements,
     boxSelect,
+    groupResizing,
   });
 
   useEffect(() => {
@@ -507,6 +552,7 @@ export default function Canvas() {
       selectedElements,
       elements,
       boxSelect,
+      groupResizing,
     };
   });
 
@@ -710,7 +756,7 @@ export default function Canvas() {
     }
 
     function handleMouseMove(e: MouseEvent) {
-      const { isPanning, resizingElement, viewport, placingObjectType } = stateRef.current;
+      const { isPanning, resizingElement, viewport, placingObjectType, groupResizing } = stateRef.current;
 
       if (pendingResize.current && !resizingElement) {
         const dx = e.clientX - pendingResize.current.startX;
@@ -719,6 +765,16 @@ export default function Canvas() {
 
         if (distance >= RESIZE_THRESHOLD) {
           setResizingElement(pendingResize.current);
+        }
+      }
+
+      if (pendingGroupResize.current && !groupResizing) {
+        const dx = e.clientX - pendingGroupResize.current.startX;
+        const dy = e.clientY - pendingGroupResize.current.startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= RESIZE_THRESHOLD) {
+          setGroupResizing(pendingGroupResize.current);
         }
       }
 
@@ -802,6 +858,62 @@ export default function Canvas() {
               : el
           )
         );
+      } else if (groupResizing) {
+        const { handle, startX, startY, startBounds, originalElements } = groupResizing;
+
+        const dx = (e.clientX - startX) / viewport.zoom;
+        const dy = (e.clientY - startY) / viewport.zoom;
+
+        let newBoundsX = startBounds.x;
+        let newBoundsY = startBounds.y;
+        let newBoundsWidth = startBounds.width;
+        let newBoundsHeight = startBounds.height;
+
+        // Calculate new bounds based on handle
+        switch (handle) {
+          case "se":
+            newBoundsWidth = Math.max(MIN_SIZE, startBounds.width + dx);
+            newBoundsHeight = Math.max(MIN_SIZE, startBounds.height + dy);
+            break;
+          case "sw":
+            newBoundsWidth = Math.max(MIN_SIZE, startBounds.width - dx);
+            newBoundsHeight = Math.max(MIN_SIZE, startBounds.height + dy);
+            newBoundsX = startBounds.x + startBounds.width - newBoundsWidth;
+            break;
+          case "ne":
+            newBoundsWidth = Math.max(MIN_SIZE, startBounds.width + dx);
+            newBoundsHeight = Math.max(MIN_SIZE, startBounds.height - dy);
+            newBoundsY = startBounds.y + startBounds.height - newBoundsHeight;
+            break;
+          case "nw":
+            newBoundsWidth = Math.max(MIN_SIZE, startBounds.width - dx);
+            newBoundsHeight = Math.max(MIN_SIZE, startBounds.height - dy);
+            newBoundsX = startBounds.x + startBounds.width - newBoundsWidth;
+            newBoundsY = startBounds.y + startBounds.height - newBoundsHeight;
+            break;
+        }
+
+        const scaleX = newBoundsWidth / startBounds.width;
+        const scaleY = newBoundsHeight / startBounds.height;
+
+        setElements((prev) =>
+          prev.map((el) => {
+            const original = originalElements.get(el.id);
+            if (!original) return el;
+
+            const relX = original.x - startBounds.x;
+            const relY = original.y - startBounds.y;
+
+            return {
+              ...el,
+              x: newBoundsX + relX * scaleX,
+              y: newBoundsY + relY * scaleY,
+              width: original.width * scaleX,
+              height: original.height * scaleY,
+              fontScale: original.fontScale * Math.min(scaleX, scaleY),
+            };
+          })
+        );
       } else if (isPanning) {
         const dx = e.clientX - lastMousePos.current.x;
         const dy = e.clientY - lastMousePos.current.y;
@@ -837,6 +949,8 @@ export default function Canvas() {
       setIsPanning(false);
       setResizingElement(null);
       pendingResize.current = null;
+      setGroupResizing(null);
+      pendingGroupResize.current = null;
 
       const { boxSelect: currentBoxSelect, viewport: currentViewport, elements: currentElements } = stateRef.current;
       if (currentBoxSelect) {
@@ -1021,7 +1135,7 @@ export default function Canvas() {
           <div
             ref={canvasRef}
             className={`fixed inset-0 top-[73px] select-none ${
-              resizingElement ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
+              resizingElement || groupResizing ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
             }`}
             style={{
               backgroundImage: `
@@ -1030,7 +1144,11 @@ export default function Canvas() {
               `,
               backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
               backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-              cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.handle].cursor : undefined,
+              cursor: resizingElement
+                ? HANDLE_CONFIGS[resizingElement.handle].cursor
+                : groupResizing
+                  ? HANDLE_CONFIGS[groupResizing.handle].cursor
+                  : undefined,
             }}
             onMouseDown={handleMouseDown}
           >
@@ -1054,6 +1172,7 @@ export default function Canvas() {
                 onTextEditSave={handleTextEditSave}
                 onTextEditCancel={handleTextEditCancel}
                 onElementContextMenu={handleElementContextMenu}
+                onGroupResizeStart={handleGroupResizeStart}
               />
             </div>
 
@@ -1258,6 +1377,35 @@ function rectanglesOverlap(
   h2: number
 ) {
   return !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1);
+}
+
+function getSelectionBounds(
+  elements: CanvasElement[],
+  selectedIds: string[]
+): { x: number; y: number; width: number; height: number } | null {
+  if (selectedIds.length === 0) return null;
+
+  const selectedElements = elements.filter((el) => selectedIds.includes(el.id));
+  if (selectedElements.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const el of selectedElements) {
+    minX = Math.min(minX, el.x);
+    minY = Math.min(minY, el.y);
+    maxX = Math.max(maxX, el.x + el.width);
+    maxY = Math.max(maxY, el.y + el.height);
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 }
 
 function calculateAdjacentPosition(
@@ -1686,6 +1834,7 @@ interface CanvasElementsLayerProps {
   onTextEditSave: (elementId: string, value: string) => void;
   onTextEditCancel: () => void;
   onElementContextMenu: (elementId: string) => void;
+  onGroupResizeStart: (e: React.MouseEvent, handle: ResizeHandle) => void;
 }
 
 function CanvasElementsLayer({
@@ -1702,6 +1851,7 @@ function CanvasElementsLayer({
   onTextEditSave,
   onTextEditCancel,
   onElementContextMenu,
+  onGroupResizeStart,
 }: CanvasElementsLayerProps) {
   return (
     <>
@@ -1848,6 +1998,44 @@ function CanvasElementsLayer({
               )}
         </div>
       ))}
+
+      {selectedElements.length > 1 && (() => {
+        const bounds = getSelectionBounds(elements, selectedElements);
+        if (!bounds) return null;
+
+        return (
+          <div
+            className="absolute border-2 border-terracotta/60 rounded-sm cursor-grab active:cursor-grabbing"
+            style={{
+              left: bounds.x,
+              top: bounds.y,
+              width: bounds.width,
+              height: bounds.height,
+            }}
+            onMouseDown={(e) => {
+              if (e.button !== 0 || e.shiftKey) return;
+              e.preventDefault();
+              e.stopPropagation();
+              // Trigger multi-drag via the first selected element
+              onElementMouseDown(e, selectedElements[0]);
+            }}
+          >
+            {CORNER_HANDLES.map((handle) => (
+              <div
+                key={handle}
+                className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                           shadow-md shadow-black/30 z-10
+                           transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                style={{
+                  cursor: HANDLE_CONFIGS[handle].cursor,
+                  ...HANDLE_CONFIGS[handle].position,
+                }}
+                onMouseDown={(e) => onGroupResizeStart(e, handle)}
+              />
+            ))}
+          </div>
+        );
+      })()}
 
       {placingObjectType === "text" && previewPos && (
         <div
