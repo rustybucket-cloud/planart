@@ -63,6 +63,8 @@ The following Tauri commands are available:
 
 ## Related Files
 
+- `src/pages/Canvas.tsx` - Main canvas page UI and interaction orchestration
+- `src/pages/canvasNewRefState.ts` - Shared Strict Mode-safe refs for new-canvas creation flow
 - `src-tauri/src/lib.rs` - Rust backend commands
 - `src/services/canvasApi.ts` - TypeScript API wrapper
 - `src/types/canvas.ts` - Shared type definitions

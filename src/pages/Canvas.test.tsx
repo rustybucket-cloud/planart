@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router'
-import Canvas, { __testingResetPendingNewCanvasId } from './Canvas'
+import Canvas from './Canvas'
+import { resetPendingNewCanvasIdForTesting } from './canvasNewRefState'
 import { canvasApi } from '@/services/canvasApi'
 import type { CanvasData } from '@/types/canvas'
 
@@ -460,7 +461,7 @@ describe('Canvas Page', () => {
 
   describe('New canvas creation', () => {
     beforeEach(() => {
-      __testingResetPendingNewCanvasId()
+      resetPendingNewCanvasIdForTesting()
       mockUseParams.mockReturnValue({ id: 'new' })
       vi.mocked(canvasApi.create).mockResolvedValue({
         id: 'new-canvas-id',

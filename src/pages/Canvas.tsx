@@ -35,14 +35,45 @@ import {
   isBase64,
 } from "@/lib/imageUtils";
 import type { CanvasElement, ViewportState } from "@/types/canvas";
+import { createNewCanvasStartedRef, pendingNewCanvasIdRef } from "./canvasNewRefState";
 
 // Configuration
 const MAX_UNDO_HISTORY = 5;
 const AUTO_SAVE_DELAY = 2000;
+const FLOATING_PANEL_CLASS =
+  "bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3";
 
-/** Refs persist across Strict Mode remounts so we only create one canvas when visiting /canvas/new */
-const createNewCanvasStartedRef = { current: false };
-const pendingNewCanvasIdRef = { current: null as string | null };
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+type PlacementObjectType = "text" | "image" | null;
+type ResizeCorner = "nw" | "ne" | "sw" | "se";
+
+interface PendingImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+interface ResizeState {
+  elementId: string;
+  corner: ResizeCorner;
+  startX: number;
+  startY: number;
+  startWidth: number;
+  startHeight: number;
+  startElementX: number;
+  startElementY: number;
+  aspectRatio: number;
+}
+
+const MIN_SIZE = 20;
+const RESIZE_THRESHOLD = 5;
+
+const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
+  nw: { cursor: "nwse-resize", position: { top: -6, left: -6 } },
+  ne: { cursor: "nesw-resize", position: { top: -6, right: -6 } },
+  sw: { cursor: "nesw-resize", position: { bottom: -6, left: -6 } },
+  se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
+};
 
 // Helper function to check if two rectangles overlap
 const rectanglesOverlap = (
@@ -158,10 +189,425 @@ const calculateAdjacentPosition = (
   return { x, y };
 };
 
-/** Reset refs so tests can assert single create. Call from tests only. */
-export function __testingResetPendingNewCanvasId() {
-  createNewCanvasStartedRef.current = false;
-  pendingNewCanvasIdRef.current = null;
+interface CanvasHeaderProps {
+  canvasName: string;
+  saveStatus: SaveStatus;
+  objectCount: number;
+  onBack: () => void;
+}
+
+function CanvasHeader({ canvasName, saveStatus, objectCount, onBack }: CanvasHeaderProps) {
+  return (
+    <header className="border-b border-terracotta/20 bg-bg-panel/80 backdrop-blur-xl sticky top-0 z-50 shadow-lg shadow-black/20">
+      <div className="max-w-[1800px] mx-auto px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={onBack}
+            variant="ghost"
+            size="icon"
+            className="hover:bg-terracotta/10 transition-all duration-300"
+          >
+            <ArrowLeft className="w-5 h-5" strokeWidth={2} />
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Crimson Pro', serif" }}>
+              {canvasName}
+            </h1>
+            <div className="flex items-center gap-2">
+              {saveStatus === "saving" && (
+                <span className="text-xs text-text-secondary font-mono flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Saving...
+                </span>
+              )}
+              {saveStatus === "saved" && (
+                <span className="text-xs text-green-400 font-mono flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
+              {saveStatus === "error" && (
+                <span className="text-xs text-red-400 font-mono">Save failed</span>
+              )}
+              {saveStatus === "idle" && (
+                <span className="text-xs text-text-secondary font-mono">{objectCount} objects</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
+            <Settings className="w-5 h-5" strokeWidth={2} />
+          </Button>
+          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
+            <Share2 className="w-5 h-5" strokeWidth={2} />
+          </Button>
+          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
+            <Download className="w-5 h-5" strokeWidth={2} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-red-500/20 text-red-400 transition-all duration-300"
+          >
+            <Trash2 className="w-5 h-5" strokeWidth={2} />
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+interface CanvasToolbarProps {
+  placingObjectType: PlacementObjectType;
+  tilingMode: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onToggleTextPlacement: () => void;
+  onImageButtonClick: () => void;
+  onToggleTilingMode: (checked: boolean) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+}
+
+function CanvasToolbar({
+  placingObjectType,
+  tilingMode,
+  canUndo,
+  canRedo,
+  onToggleTextPlacement,
+  onImageButtonClick,
+  onToggleTilingMode,
+  onUndo,
+  onRedo,
+}: CanvasToolbarProps) {
+  return (
+    <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
+      <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
+        <Button
+          onClick={onToggleTextPlacement}
+          variant="ghost"
+          size="icon"
+          className={`w-12 h-12 transition-all duration-300 group ${
+            placingObjectType === "text"
+              ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+              : "hover:bg-terracotta/20"
+          }`}
+          title="Add Text (T)"
+        >
+          <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+
+        <Button
+          onClick={onImageButtonClick}
+          variant="ghost"
+          size="icon"
+          className={`w-12 h-12 transition-all duration-300 group ${
+            placingObjectType === "image"
+              ? "bg-terracotta/20 ring-2 ring-terracotta/50"
+              : "hover:bg-terracotta/20"
+          }`}
+          title="Add Image (I)"
+        >
+          <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+
+        <div className="h-px bg-terracotta/20 my-2" />
+
+        <div className="flex flex-col items-center gap-2 py-2">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={tilingMode}
+              onCheckedChange={onToggleTilingMode}
+              className="data-[state=checked]:bg-terracotta"
+            />
+          </div>
+          <span className="text-[10px] text-text-secondary font-mono">TILE</span>
+        </div>
+
+        <div className="h-px bg-terracotta/20 my-2" />
+
+        <Button
+          onClick={onUndo}
+          disabled={!canUndo}
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+
+        <Button
+          onClick={onRedo}
+          disabled={!canRedo}
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
+          title="Redo (Ctrl+Y)"
+        >
+          <Redo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+interface CanvasZoomControlsProps {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onResetZoom: () => void;
+}
+
+function CanvasZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: CanvasZoomControlsProps) {
+  return (
+    <div className="fixed right-8 bottom-8 z-40">
+      <div className={`${FLOATING_PANEL_CLASS} space-y-2`}>
+        <Button
+          onClick={onZoomIn}
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
+          title="Zoom In (+)"
+        >
+          <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+
+        <button
+          onClick={onResetZoom}
+          className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
+          title="Reset Zoom (0)"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+
+        <Button
+          onClick={onZoomOut}
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
+          title="Zoom Out (-)"
+        >
+          <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+interface CanvasStatusBarProps {
+  viewport: ViewportState;
+  objectCount: number;
+}
+
+function CanvasStatusBar({ viewport, objectCount }: CanvasStatusBarProps) {
+  return (
+    <div className="fixed left-8 bottom-8 z-40">
+      <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-xl shadow-2xl shadow-black/40 px-4 py-2">
+        <div className="flex items-center gap-4 text-xs font-mono text-text-secondary">
+          <div className="flex items-center gap-2">
+            <Move className="w-4 h-4" strokeWidth={2} />
+            <span>X: {Math.round(viewport.x)}</span>
+            <span>Y: {Math.round(viewport.y)}</span>
+          </div>
+          <div className="w-px h-4 bg-terracotta/20" />
+          <div className="flex items-center gap-2">
+            <Grid3x3 className="w-4 h-4" strokeWidth={2} />
+            <span>{objectCount} objects</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CanvasEmptyState() {
+  return (
+    <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none">
+      <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-8 text-center animate-fade-in">
+        <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-terracotta to-warm-orange flex items-center justify-center">
+          <ImageIcon className="w-10 h-10 text-white" strokeWidth={2} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3" style={{ fontFamily: "'Crimson Pro', serif" }}>
+          Start Creating
+        </h2>
+        <div className="text-sm text-text-secondary space-y-2 max-w-md">
+          <p className="font-mono">
+            <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Ctrl+V</kbd> Paste images from
+            clipboard
+          </p>
+          <p className="font-mono">
+            <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Scroll</kbd> Zoom in/out
+          </p>
+          <p className="font-mono">
+            <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">+/-</kbd> or
+            <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta ml-1">0</kbd> Zoom controls
+          </p>
+          <p className="font-mono">
+            <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Click+Drag</kbd> Move objects
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface CanvasElementsLayerProps {
+  elements: CanvasElement[];
+  selectedElement: string | null;
+  editingElementId: string | null;
+  placingObjectType: PlacementObjectType;
+  previewPos: { x: number; y: number } | null;
+  pendingImage: PendingImage | null;
+  onElementMouseDown: (e: React.MouseEvent, elementId: string) => void;
+  onTextDoubleClick: (element: CanvasElement) => void;
+  onResizeStart: (e: React.MouseEvent, elementId: string, corner: ResizeCorner) => void;
+  onDeleteElement: (elementId: string) => void;
+  onTextEditSave: (elementId: string, value: string) => void;
+  onTextEditCancel: () => void;
+}
+
+function CanvasElementsLayer({
+  elements,
+  selectedElement,
+  editingElementId,
+  placingObjectType,
+  previewPos,
+  pendingImage,
+  onElementMouseDown,
+  onTextDoubleClick,
+  onResizeStart,
+  onDeleteElement,
+  onTextEditSave,
+  onTextEditCancel,
+}: CanvasElementsLayerProps) {
+  return (
+    <>
+      {elements.map((element) => (
+        <ContextMenu key={element.id}>
+          <ContextMenuTrigger asChild>
+            <div
+              className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
+                selectedElement === element.id
+                  ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
+                  : "hover:ring-2 hover:ring-terracotta/50"
+              }`}
+              style={{
+                left: element.x,
+                top: element.y,
+                width: element.width,
+                height: element.height,
+                transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+              }}
+              onMouseDownCapture={(e) => onElementMouseDown(e, element.id)}
+              onDoubleClick={() => element.type === "text" && onTextDoubleClick(element)}
+            >
+              {element.type === "image" ? (
+                <>
+                  <img
+                    src={element.content}
+                    alt="Canvas element"
+                    className="w-full h-full object-cover rounded-lg"
+                    draggable={false}
+                  />
+                  {selectedElement === element.id && (
+                    <>
+                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                        <div
+                          key={corner}
+                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                          style={{
+                            cursor: HANDLE_CONFIGS[corner].cursor,
+                            ...HANDLE_CONFIGS[corner].position,
+                          }}
+                          onMouseDown={(e) => onResizeStart(e, element.id, corner)}
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
+              ) : editingElementId === element.id ? (
+                <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
+                  <textarea
+                    autoFocus
+                    defaultValue={element.content === "Double-click to edit" ? "" : element.content}
+                    className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                    onBlur={(e) => onTextEditSave(element.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        onTextEditSave(element.id, e.currentTarget.value);
+                      } else if (e.key === "Escape") {
+                        onTextEditCancel();
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+                  <p
+                    className="text-center break-words"
+                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+                  >
+                    {element.content}
+                  </p>
+                </div>
+              )}
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
+            <ContextMenuItem variant="destructive" onClick={() => onDeleteElement(element.id)}>
+              <Trash2 className="w-4 h-4" />
+              Delete
+              <ContextMenuShortcut>Del</ContextMenuShortcut>
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ))}
+
+      {placingObjectType === "text" && previewPos && (
+        <div
+          className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20"
+          style={{
+            left: previewPos.x - 100,
+            top: previewPos.y - 30,
+            width: 200,
+            height: 60,
+          }}
+        >
+          <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
+            <p
+              className="text-center text-text-secondary"
+              style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
+            >
+              Text
+            </p>
+          </div>
+        </div>
+      )}
+
+      {placingObjectType === "image" && previewPos && pendingImage && (
+        <div
+          className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20 rounded-lg overflow-hidden"
+          style={{
+            left: previewPos.x - Math.min(pendingImage.width, 200) / 2,
+            top: previewPos.y - Math.min(pendingImage.height, 200) / 2,
+            width: Math.min(pendingImage.width, 200),
+            height: Math.min(pendingImage.height, 200),
+          }}
+        >
+          <img src={pendingImage.url} alt="Preview" className="w-full h-full object-cover" />
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function Canvas() {
@@ -171,8 +617,7 @@ export default function Canvas() {
   // Persistence state
   const [canvasName, setCanvasName] = useState("Untitled Canvas");
   const [isLoading, setIsLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [isNewCanvas, setIsNewCanvas] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
   // Canvas state
   const [elements, setElements] = useState<CanvasElement[]>([]);
@@ -182,12 +627,8 @@ export default function Canvas() {
   const [isPanning, setIsPanning] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [tilingMode, setTilingMode] = useState(false);
-  const [placingObjectType, setPlacingObjectType] = useState<"text" | "image" | null>(null);
-  const [pendingImage, setPendingImage] = useState<{
-    url: string;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [placingObjectType, setPlacingObjectType] = useState<PlacementObjectType>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [canvasId, setCanvasId] = useState<string | null>(null);
@@ -198,32 +639,8 @@ export default function Canvas() {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const currentMousePos = useRef({ x: 0, y: 0 });
 
-  // Resize state
-  type ResizeCorner = "nw" | "ne" | "sw" | "se";
-
-  interface ResizeState {
-    elementId: string;
-    corner: ResizeCorner;
-    startX: number;
-    startY: number;
-    startWidth: number;
-    startHeight: number;
-    startElementX: number;
-    startElementY: number;
-    aspectRatio: number;
-  }
-
   const [resizingElement, setResizingElement] = useState<ResizeState | null>(null);
   const pendingResize = useRef<ResizeState | null>(null);
-  const MIN_SIZE = 20;
-  const RESIZE_THRESHOLD = 5;
-
-  const HANDLE_CONFIGS: Record<ResizeCorner, { cursor: string; position: React.CSSProperties }> = {
-    nw: { cursor: "nwse-resize", position: { top: -6, left: -6 } },
-    ne: { cursor: "nesw-resize", position: { top: -6, right: -6 } },
-    sw: { cursor: "nesw-resize", position: { bottom: -6, left: -6 } },
-    se: { cursor: "nwse-resize", position: { bottom: -6, right: -6 } },
-  };
 
   // Load canvas on mount
   useEffect(() => {
@@ -237,7 +654,6 @@ export default function Canvas() {
           return;
         }
         createNewCanvasStartedRef.current = true;
-        setIsNewCanvas(true);
         try {
           const newCanvas = await canvasApi.create("Untitled Canvas");
           pendingNewCanvasIdRef.current = newCanvas.id;
@@ -319,14 +735,14 @@ export default function Canvas() {
 
   // Debounced auto-save effect
   useEffect(() => {
-    if (!canvasId || isLoading || isNewCanvas) return;
+    if (!canvasId || isLoading) return;
 
     const timeoutId = setTimeout(() => {
       saveCanvas();
     }, AUTO_SAVE_DELAY);
 
     return () => clearTimeout(timeoutId);
-  }, [elements, viewport, canvasId, isLoading, isNewCanvas, saveCanvas]);
+  }, [elements, viewport, canvasId, isLoading, saveCanvas]);
 
   // Reset save status after showing "saved"
   useEffect(() => {
@@ -864,227 +1280,35 @@ export default function Canvas() {
 
   return (
     <div className="min-h-screen bg-bg-deep text-white overflow-hidden">
-      {/* Header */}
-      <header className="border-b border-terracotta/20 bg-bg-panel/80 backdrop-blur-xl sticky top-0 z-50 shadow-lg shadow-black/20">
-        <div className="max-w-[1800px] mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={() => navigate("/")}
-              variant="ghost"
-              size="icon"
-              className="hover:bg-terracotta/10 transition-all duration-300"
-            >
-              <ArrowLeft className="w-5 h-5" strokeWidth={2} />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Crimson Pro', serif" }}>
-                {canvasName}
-              </h1>
-              <div className="flex items-center gap-2">
-                {saveStatus === "saving" && (
-                  <span className="text-xs text-text-secondary font-mono flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Saving...
-                  </span>
-                )}
-                {saveStatus === "saved" && (
-                  <span className="text-xs text-green-400 font-mono flex items-center gap-1">
-                    <Check className="w-3 h-3" />
-                    Saved
-                  </span>
-                )}
-                {saveStatus === "error" && (
-                  <span className="text-xs text-red-400 font-mono">Save failed</span>
-                )}
-                {saveStatus === "idle" && (
-                  <span className="text-xs text-text-secondary font-mono">{elements.length} objects</span>
-                )}
-              </div>
-            </div>
-          </div>
+      <CanvasHeader
+        canvasName={canvasName}
+        saveStatus={saveStatus}
+        objectCount={elements.length}
+        onBack={() => navigate("/")}
+      />
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hover:bg-terracotta/10 transition-all duration-300"
-            >
-              <Settings className="w-5 h-5" strokeWidth={2} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hover:bg-terracotta/10 transition-all duration-300"
-            >
-              <Share2 className="w-5 h-5" strokeWidth={2} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hover:bg-terracotta/10 transition-all duration-300"
-            >
-              <Download className="w-5 h-5" strokeWidth={2} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hover:bg-red-500/20 text-red-400 transition-all duration-300"
-            >
-              <Trash2 className="w-5 h-5" strokeWidth={2} />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <CanvasToolbar
+        placingObjectType={placingObjectType}
+        tilingMode={tilingMode}
+        canUndo={history.length > 0}
+        canRedo={redoHistory.length > 0}
+        onToggleTextPlacement={() => setPlacingObjectType(placingObjectType === "text" ? null : "text")}
+        onImageButtonClick={() => fileInputRef.current?.click()}
+        onToggleTilingMode={setTilingMode}
+        onUndo={undo}
+        onRedo={redo}
+      />
 
-      {/* Floating Toolbar */}
-      <div className="fixed left-8 top-1/2 -translate-y-1/2 z-40">
-        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
-          <Button
-            onClick={() => setPlacingObjectType(placingObjectType === "text" ? null : "text")}
-            variant="ghost"
-            size="icon"
-            className={`w-12 h-12 transition-all duration-300 group ${
-              placingObjectType === "text"
-                ? "bg-terracotta/20 ring-2 ring-terracotta/50"
-                : "hover:bg-terracotta/20"
-            }`}
-            title="Add Text (T)"
-          >
-            <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
+      <CanvasZoomControls
+        zoom={viewport.zoom}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onResetZoom={resetZoom}
+      />
 
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            variant="ghost"
-            size="icon"
-            className={`w-12 h-12 transition-all duration-300 group ${
-              placingObjectType === "image"
-                ? "bg-terracotta/20 ring-2 ring-terracotta/50"
-                : "hover:bg-terracotta/20"
-            }`}
-            title="Add Image (I)"
-          >
-            <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
+      <CanvasStatusBar viewport={viewport} objectCount={elements.length} />
 
-          <div className="h-px bg-terracotta/20 my-2" />
-
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={tilingMode}
-                onCheckedChange={setTilingMode}
-                className="data-[state=checked]:bg-terracotta"
-              />
-            </div>
-            <span className="text-[10px] text-text-secondary font-mono">TILE</span>
-          </div>
-
-          <div className="h-px bg-terracotta/20 my-2" />
-
-          <Button
-            onClick={undo}
-            disabled={history.length === 0}
-            variant="ghost"
-            size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
-
-          <Button
-            onClick={redo}
-            disabled={redoHistory.length === 0}
-            variant="ghost"
-            size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 disabled:opacity-30 transition-all duration-300 group"
-            title="Redo (Ctrl+Y)"
-          >
-            <Redo2 className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Zoom Controls */}
-      <div className="fixed right-8 bottom-8 z-40">
-        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-3 space-y-2">
-          <Button
-            onClick={zoomIn}
-            variant="ghost"
-            size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
-            title="Zoom In (+)"
-          >
-            <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
-
-          <button
-            onClick={resetZoom}
-            className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
-            title="Reset Zoom (0)"
-          >
-            {Math.round(viewport.zoom * 100)}%
-          </button>
-
-          <Button
-            onClick={zoomOut}
-            variant="ghost"
-            size="icon"
-            className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
-            title="Zoom Out (-)"
-          >
-            <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Status Bar */}
-      <div className="fixed left-8 bottom-8 z-40">
-        <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-xl shadow-2xl shadow-black/40 px-4 py-2">
-          <div className="flex items-center gap-4 text-xs font-mono text-text-secondary">
-            <div className="flex items-center gap-2">
-              <Move className="w-4 h-4" strokeWidth={2} />
-              <span>X: {Math.round(viewport.x)}</span>
-              <span>Y: {Math.round(viewport.y)}</span>
-            </div>
-            <div className="w-px h-4 bg-terracotta/20" />
-            <div className="flex items-center gap-2">
-              <Grid3x3 className="w-4 h-4" strokeWidth={2} />
-              <span>{elements.length} objects</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Help Tooltip */}
-      {elements.length === 0 && (
-        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none">
-          <div className="bg-bg-panel/90 backdrop-blur-xl border border-terracotta/20 rounded-2xl shadow-2xl shadow-black/40 p-8 text-center animate-fade-in">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-terracotta to-warm-orange flex items-center justify-center">
-              <ImageIcon className="w-10 h-10 text-white" strokeWidth={2} />
-            </div>
-            <h2 className="text-2xl font-bold mb-3" style={{ fontFamily: "'Crimson Pro', serif" }}>
-              Start Creating
-            </h2>
-            <div className="text-sm text-text-secondary space-y-2 max-w-md">
-              <p className="font-mono">
-                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Ctrl+V</kbd> Paste images from clipboard
-              </p>
-              <p className="font-mono">
-                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Scroll</kbd> Zoom in/out
-              </p>
-              <p className="font-mono">
-                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">+/-</kbd> or
-                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta ml-1">0</kbd> Zoom controls
-              </p>
-              <p className="font-mono">
-                <kbd className="px-2 py-1 bg-terracotta/10 rounded text-terracotta">Click+Drag</kbd> Move objects
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {elements.length === 0 && <CanvasEmptyState />}
 
       {/* Canvas Area */}
       <div
@@ -1114,135 +1338,20 @@ export default function Canvas() {
             transformOrigin: "0 0",
           }}
         >
-          {elements.map((element) => (
-            <ContextMenu key={element.id}>
-              <ContextMenuTrigger asChild>
-                <div
-                  className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-                    selectedElement === element.id
-                      ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
-                      : "hover:ring-2 hover:ring-terracotta/50"
-                  }`}
-                  style={{
-                    left: element.x,
-                    top: element.y,
-                    width: element.width,
-                    height: element.height,
-                    transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
-                  }}
-                  onMouseDownCapture={(e) => handleElementMouseDown(e, element.id)}
-                  onDoubleClick={() => element.type === "text" && handleTextDoubleClick(element)}
-                >
-                  {element.type === "image" ? (
-                    <>
-                      <img
-                        src={element.content}
-                        alt="Canvas element"
-                        className="w-full h-full object-cover rounded-lg"
-                        draggable={false}
-                      />
-                      {/* Resize handles for selected images */}
-                      {selectedElement === element.id && (
-                        <>
-                          {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
-                            <div
-                              key={corner}
-                              className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
-                                         shadow-md shadow-black/30 z-10
-                                         transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
-                              style={{
-                                cursor: HANDLE_CONFIGS[corner].cursor,
-                                ...HANDLE_CONFIGS[corner].position,
-                              }}
-                              onMouseDown={(e) => handleResizeStart(e, element.id, corner)}
-                            />
-                          ))}
-                        </>
-                      )}
-                    </>
-                  ) : editingElementId === element.id ? (
-                    <div className="w-full h-full bg-bg-panel/90 backdrop-blur-sm border-2 border-terracotta rounded-lg p-2">
-                      <textarea
-                        autoFocus
-                        defaultValue={element.content === "Double-click to edit" ? "" : element.content}
-                        className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                        style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                        onBlur={(e) => handleTextEditSave(element.id, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleTextEditSave(element.id, e.currentTarget.value);
-                          } else if (e.key === "Escape") {
-                            handleTextEditCancel();
-                          }
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
-                      <p
-                        className="text-center break-words"
-                        style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                      >
-                        {element.content}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
-                <ContextMenuItem
-                  variant="destructive"
-                  onClick={() => deleteElement(element.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                  <ContextMenuShortcut>Del</ContextMenuShortcut>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          ))}
-
-          {/* Preview element for placement mode */}
-          {placingObjectType === "text" && previewPos && (
-            <div
-              className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20"
-              style={{
-                left: previewPos.x - 100,
-                top: previewPos.y - 30,
-                width: 200,
-                height: 60,
-              }}
-            >
-              <div className="w-full h-full flex items-center justify-center bg-bg-panel/80 backdrop-blur-sm border-2 border-dashed border-terracotta/40 rounded-lg p-4">
-                <p
-                  className="text-center text-text-secondary"
-                  style={{ fontFamily: "'Crimson Pro', serif", fontSize: "18px" }}
-                >
-                  Text
-                </p>
-              </div>
-            </div>
-          )}
-          {placingObjectType === "image" && previewPos && pendingImage && (
-            <div
-              className="absolute pointer-events-none opacity-50 ring-2 ring-terracotta/50 shadow-lg shadow-terracotta/20 rounded-lg overflow-hidden"
-              style={{
-                left: previewPos.x - Math.min(pendingImage.width, 200) / 2,
-                top: previewPos.y - Math.min(pendingImage.height, 200) / 2,
-                width: Math.min(pendingImage.width, 200),
-                height: Math.min(pendingImage.height, 200),
-              }}
-            >
-              <img
-                src={pendingImage.url}
-                alt="Preview"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
+          <CanvasElementsLayer
+            elements={elements}
+            selectedElement={selectedElement}
+            editingElementId={editingElementId}
+            placingObjectType={placingObjectType}
+            previewPos={previewPos}
+            pendingImage={pendingImage}
+            onElementMouseDown={handleElementMouseDown}
+            onTextDoubleClick={handleTextDoubleClick}
+            onResizeStart={handleResizeStart}
+            onDeleteElement={deleteElement}
+            onTextEditSave={handleTextEditSave}
+            onTextEditCancel={handleTextEditCancel}
+          />
         </div>
       </div>
 
