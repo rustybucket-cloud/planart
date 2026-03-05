@@ -3,11 +3,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   ArrowLeft,
-  Download,
-  Share2,
+  Share,
   Trash2,
   Copy,
-  Settings,
   Type,
   Image as ImageIcon,
   Grid3x3,
@@ -21,6 +19,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -1658,22 +1662,18 @@ function CanvasHeader({ canvasName, saveStatus, objectCount, onBack, onRename }:
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
-            <Settings className="w-5 h-5" strokeWidth={2} />
-          </Button>
-          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
-            <Share2 className="w-5 h-5" strokeWidth={2} />
-          </Button>
-          <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 transition-all duration-300">
-            <Download className="w-5 h-5" strokeWidth={2} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hover:bg-red-500/20 text-red-400 transition-all duration-300"
-          >
-            <Trash2 className="w-5 h-5" strokeWidth={2} />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="hover:bg-terracotta/10 hover:text-white transition-all duration-300">
+                  <Share className="w-5 h-5" strokeWidth={2} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Export</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
     </header>
