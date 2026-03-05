@@ -557,7 +557,7 @@ export default function Canvas() {
   });
 
   function handleMouseDown(e: React.MouseEvent) {
-    if (placingObjectType && e.button === 0 && !e.shiftKey) {
+    if (placingObjectType && e.button === 0) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
         const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
@@ -597,12 +597,14 @@ export default function Canvas() {
       return;
     }
 
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    if (e.button === 1) {
       setIsPanning(true);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     } else if (e.button === 0 && !placingObjectType) {
-      setSelectedElement(null);
-      setSelectedElements([]);
+      if (!e.shiftKey) {
+        setSelectedElement(null);
+        setSelectedElements([]);
+      }
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
         const screenX = e.clientX - rect.left;
@@ -618,10 +620,45 @@ export default function Canvas() {
   }
 
   function handleElementMouseDown(e: React.MouseEvent, elementId: string) {
-    if (e.button !== 0 || e.shiftKey) return;
+    if (e.button !== 0) return;
 
     e.preventDefault();
     e.stopPropagation();
+
+    // Shift+click: toggle element in/out of multi-selection (no drag)
+    if (e.shiftKey) {
+      const isInMultiSelection = selectedElements.includes(elementId);
+      const isSingleSelected = selectedElement === elementId;
+
+      if (isInMultiSelection) {
+        // Remove from multi-selection
+        const updated = selectedElements.filter((id) => id !== elementId);
+        if (updated.length === 1) {
+          setSelectedElement(updated[0]);
+          setSelectedElements([]);
+        } else if (updated.length === 0) {
+          setSelectedElement(null);
+          setSelectedElements([]);
+        } else {
+          setSelectedElements(updated);
+        }
+      } else if (isSingleSelected) {
+        // Deselect the only selected element
+        setSelectedElement(null);
+        setSelectedElements([]);
+      } else if (selectedElement && !selectedElements.length) {
+        // Promote single selection + new element into multi-selection
+        setSelectedElements([selectedElement, elementId]);
+        setSelectedElement(null);
+      } else if (selectedElements.length > 0) {
+        // Add to existing multi-selection
+        setSelectedElements([...selectedElements, elementId]);
+      } else {
+        // Nothing was selected, just select this one
+        setSelectedElement(elementId);
+      }
+      return;
+    }
 
     const element = elements.find((el) => el.id === elementId);
     if (!element) return;
@@ -945,14 +982,14 @@ export default function Canvas() {
       }
     }
 
-    function handleMouseUp() {
+    function handleMouseUp(e: MouseEvent) {
       setIsPanning(false);
       setResizingElement(null);
       pendingResize.current = null;
       setGroupResizing(null);
       pendingGroupResize.current = null;
 
-      const { boxSelect: currentBoxSelect, viewport: currentViewport, elements: currentElements } = stateRef.current;
+      const { boxSelect: currentBoxSelect, viewport: currentViewport, elements: currentElements, selectedElements: currentSelectedElements, selectedElement: currentSelectedElement } = stateRef.current;
       if (currentBoxSelect) {
         const x1 = Math.min(currentBoxSelect.startScreenX, currentBoxSelect.currentScreenX);
         const y1 = Math.min(currentBoxSelect.startScreenY, currentBoxSelect.currentScreenY);
@@ -968,18 +1005,36 @@ export default function Canvas() {
         const boxHeight = canvasY2 - canvasY1;
 
         if (boxWidth > 5 || boxHeight > 5) {
-          const selected = currentElements
+          const boxSelected = currentElements
             .filter((el) =>
               rectanglesOverlap(canvasX1, canvasY1, boxWidth, boxHeight, el.x, el.y, el.width, el.height)
             )
             .map((el) => el.id);
 
-          if (selected.length === 1) {
-            setSelectedElement(selected[0]);
-            setSelectedElements([]);
-          } else if (selected.length > 1) {
-            setSelectedElement(null);
-            setSelectedElements(selected);
+          if (e.shiftKey) {
+            // Merge with existing selection
+            const existing = currentSelectedElements.length > 0
+              ? currentSelectedElements
+              : currentSelectedElement
+                ? [currentSelectedElement]
+                : [];
+            const merged = Array.from(new Set([...existing, ...boxSelected]));
+
+            if (merged.length === 1) {
+              setSelectedElement(merged[0]);
+              setSelectedElements([]);
+            } else if (merged.length > 1) {
+              setSelectedElement(null);
+              setSelectedElements(merged);
+            }
+          } else {
+            if (boxSelected.length === 1) {
+              setSelectedElement(boxSelected[0]);
+              setSelectedElements([]);
+            } else if (boxSelected.length > 1) {
+              setSelectedElement(null);
+              setSelectedElements(boxSelected);
+            }
           }
         }
 
