@@ -6,6 +6,7 @@ import {
   Download,
   Share2,
   Trash2,
+  Copy,
   Settings,
   Type,
   Image as ImageIcon,
@@ -280,6 +281,22 @@ export default function Canvas() {
     setElements((prev) =>
       prev.map((el) => (el.id === elementId ? { ...el, textSize: size } : el))
     );
+  }
+
+  function duplicateElement(elementId: string) {
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    pushHistory();
+    const offset = 20;
+    const newElement: CanvasElement = {
+      ...element,
+      id: crypto.randomUUID(),
+      x: element.x + offset,
+      y: element.y + offset,
+    };
+    setElements((prev) => [...prev, newElement]);
+    setSelectedElement(newElement.id);
   }
 
   function cancelPlacement() {
@@ -850,6 +867,7 @@ export default function Canvas() {
             onTextDoubleClick={handleTextDoubleClick}
             onResizeStart={handleResizeStart}
             onDeleteElement={deleteElement}
+            onDuplicateElement={duplicateElement}
             onTextEditSave={handleTextEditSave}
             onTextEditCancel={handleTextEditCancel}
             onSetTextSize={setTextSize}
@@ -1412,6 +1430,7 @@ interface CanvasElementsLayerProps {
   onTextDoubleClick: (element: CanvasElement) => void;
   onResizeStart: (e: React.MouseEvent, elementId: string, corner: ResizeCorner) => void;
   onDeleteElement: (elementId: string) => void;
+  onDuplicateElement: (elementId: string) => void;
   onTextEditSave: (elementId: string, value: string) => void;
   onTextEditCancel: () => void;
   onSetTextSize: (elementId: string, size: TextSize) => void;
@@ -1428,6 +1447,7 @@ function CanvasElementsLayer({
   onTextDoubleClick,
   onResizeStart,
   onDeleteElement,
+  onDuplicateElement,
   onTextEditSave,
   onTextEditCancel,
   onSetTextSize,
@@ -1535,6 +1555,10 @@ function CanvasElementsLayer({
                 <ContextMenuSeparator className="bg-terracotta/20" />
               </>
             )}
+            <ContextMenuItem className="text-white" onClick={() => onDuplicateElement(element.id)}>
+              <Copy className="w-4 h-4" />
+              Duplicate
+            </ContextMenuItem>
             <ContextMenuItem variant="destructive" onClick={() => onDeleteElement(element.id)}>
               <Trash2 className="w-4 h-4" />
               Delete

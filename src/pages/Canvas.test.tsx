@@ -520,6 +520,43 @@ describe('Canvas Page', () => {
       })
     })
 
+    it('should duplicate element via context menu', async () => {
+      const user = userEvent.setup()
+      await renderCanvas()
+
+      // Place a text element
+      const textButton = screen.getByTitle('Add Text (T)')
+      await user.click(textButton)
+
+      const canvas = getCanvasArea()
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 500, clientY: 400, button: 0 })
+        await new Promise((r) => setTimeout(r, 10))
+      })
+
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'Clone Me{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByText('Clone Me')).toBeInTheDocument()
+      })
+
+      // Right-click to open context menu
+      const textElement = screen.getByText('Clone Me')
+      await user.pointer({ keys: '[MouseRight]', target: textElement })
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /duplicate/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole('menuitem', { name: /duplicate/i }))
+
+      // Should now have two elements with the same text
+      await waitFor(() => {
+        expect(screen.getAllByText('Clone Me')).toHaveLength(2)
+      })
+    })
+
     it('should show text size buttons in context menu for text elements', async () => {
       const user = userEvent.setup()
       await renderCanvas()
