@@ -1192,7 +1192,7 @@ function CanvasElementsLayer({
                 height: element.height,
                 transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
               }}
-              onMouseDownCapture={(e) => onElementMouseDown(e, element.id)}
+              onMouseDown={(e) => onElementMouseDown(e, element.id)}
               onDoubleClick={() => element.type === "text" && onTextDoubleClick(element)}
             >
               {element.type === "image" ? (
