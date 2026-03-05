@@ -294,35 +294,52 @@ export default function Canvas() {
     }
   }
 
-  function deleteElement(elementId: string) {
-    pushHistory();
-    setElements((prev) => prev.filter((el) => el.id !== elementId));
-    if (selectedElement === elementId) {
-      setSelectedElement(null);
-    }
-  }
+  function duplicateSelected() {
+    const elementsToDuplicate = selectedElements.length > 0
+      ? elements.filter((el) => selectedElements.includes(el.id))
+      : selectedElement
+        ? elements.filter((el) => el.id === selectedElement)
+        : [];
 
-  function setElementFontScale(elementId: string, scale: number) {
-    pushHistory();
-    setElements((prev) =>
-      prev.map((el) => (el.id === elementId ? { ...el, fontScale: scale } : el))
-    );
-  }
-
-  function duplicateElement(elementId: string) {
-    const element = elements.find((el) => el.id === elementId);
-    if (!element) return;
+    if (elementsToDuplicate.length === 0) return;
 
     pushHistory();
     const offset = 20;
-    const newElement: CanvasElement = {
+    const newElements: CanvasElement[] = elementsToDuplicate.map((element) => ({
       ...element,
       id: crypto.randomUUID(),
       x: element.x + offset,
       y: element.y + offset,
-    };
-    setElements((prev) => [...prev, newElement]);
-    setSelectedElement(newElement.id);
+    }));
+
+    setElements((prev) => [...prev, ...newElements]);
+
+    if (newElements.length === 1) {
+      setSelectedElement(newElements[0].id);
+      setSelectedElements([]);
+    } else {
+      setSelectedElement(null);
+      setSelectedElements(newElements.map((el) => el.id));
+    }
+  }
+
+  function setSelectedFontScale(scale: number) {
+    const idsToUpdate = selectedElements.length > 0
+      ? selectedElements
+      : selectedElement
+        ? [selectedElement]
+        : [];
+
+    if (idsToUpdate.length === 0) return;
+
+    pushHistory();
+    setElements((prev) =>
+      prev.map((el) =>
+        idsToUpdate.includes(el.id) && el.type === "text"
+          ? { ...el, fontScale: scale }
+          : el
+      )
+    );
   }
 
   function cancelPlacement() {
@@ -653,6 +670,16 @@ export default function Canvas() {
 
   function handleTextEditCancel() {
     setEditingElementId(null);
+  }
+
+  function handleElementContextMenu(elementId: string) {
+    const isInMultiSelection = selectedElements.includes(elementId);
+    const isSingleSelected = selectedElement === elementId;
+
+    if (!isInMultiSelection && !isSingleSelected) {
+      setSelectedElement(elementId);
+      setSelectedElements([]);
+    }
   }
 
   useEffect(() => {
@@ -989,59 +1016,117 @@ export default function Canvas() {
 
       {elements.length === 0 && <CanvasEmptyState />}
 
-      <div
-        ref={canvasRef}
-        className={`fixed inset-0 top-[73px] select-none ${
-          resizingElement ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
-        }`}
-        style={{
-          backgroundImage: `
-            radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
-            radial-gradient(circle, rgba(212, 132, 94, 0.08) 1px, transparent 1px)
-          `,
-          backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
-          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-          cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.handle].cursor : undefined,
-        }}
-        onMouseDown={handleMouseDown}
-      >
-        <div
-          style={{
-            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
-            transformOrigin: "0 0",
-          }}
-        >
-          <CanvasElementsLayer
-            elements={elements}
-            selectedElement={selectedElement}
-            selectedElements={selectedElements}
-            editingElementId={editingElementId}
-            placingObjectType={placingObjectType}
-            previewPos={previewPos}
-            pendingImage={pendingImage}
-            onElementMouseDown={handleElementMouseDown}
-            onTextDoubleClick={handleTextDoubleClick}
-            onResizeStart={handleResizeStart}
-            onDeleteElement={deleteElement}
-            onDuplicateElement={duplicateElement}
-            onTextEditSave={handleTextEditSave}
-            onTextEditCancel={handleTextEditCancel}
-            onSetFontScale={setElementFontScale}
-          />
-        </div>
-
-        {boxSelect && (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
           <div
-            className="absolute pointer-events-none border-2 border-terracotta/60 bg-terracotta/10 rounded-sm"
+            ref={canvasRef}
+            className={`fixed inset-0 top-[73px] select-none ${
+              resizingElement ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
+            }`}
             style={{
-              left: Math.min(boxSelect.startScreenX, boxSelect.currentScreenX),
-              top: Math.min(boxSelect.startScreenY, boxSelect.currentScreenY),
-              width: Math.abs(boxSelect.currentScreenX - boxSelect.startScreenX),
-              height: Math.abs(boxSelect.currentScreenY - boxSelect.startScreenY),
+              backgroundImage: `
+                radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
+                radial-gradient(circle, rgba(212, 132, 94, 0.08) 1px, transparent 1px)
+              `,
+              backgroundSize: `${40 * viewport.zoom}px ${40 * viewport.zoom}px, ${10 * viewport.zoom}px ${10 * viewport.zoom}px`,
+              backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+              cursor: resizingElement ? HANDLE_CONFIGS[resizingElement.handle].cursor : undefined,
             }}
-          />
-        )}
-      </div>
+            onMouseDown={handleMouseDown}
+          >
+            <div
+              style={{
+                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+                transformOrigin: "0 0",
+              }}
+            >
+              <CanvasElementsLayer
+                elements={elements}
+                selectedElement={selectedElement}
+                selectedElements={selectedElements}
+                editingElementId={editingElementId}
+                placingObjectType={placingObjectType}
+                previewPos={previewPos}
+                pendingImage={pendingImage}
+                onElementMouseDown={handleElementMouseDown}
+                onTextDoubleClick={handleTextDoubleClick}
+                onResizeStart={handleResizeStart}
+                onTextEditSave={handleTextEditSave}
+                onTextEditCancel={handleTextEditCancel}
+                onElementContextMenu={handleElementContextMenu}
+              />
+            </div>
+
+            {boxSelect && (
+              <div
+                className="absolute pointer-events-none border-2 border-terracotta/60 bg-terracotta/10 rounded-sm"
+                style={{
+                  left: Math.min(boxSelect.startScreenX, boxSelect.currentScreenX),
+                  top: Math.min(boxSelect.startScreenY, boxSelect.currentScreenY),
+                  width: Math.abs(boxSelect.currentScreenX - boxSelect.startScreenX),
+                  height: Math.abs(boxSelect.currentScreenY - boxSelect.startScreenY),
+                }}
+              />
+            )}
+          </div>
+        </ContextMenuTrigger>
+        {(selectedElement || selectedElements.length > 0) && (() => {
+          const selectedIds = selectedElements.length > 0
+            ? selectedElements
+            : selectedElement
+              ? [selectedElement]
+              : [];
+          const selectedEls = elements.filter((el) => selectedIds.includes(el.id));
+          const allText = selectedEls.length > 0 && selectedEls.every((el) => el.type === "text");
+
+          // Check if all selected text elements have the same scale
+          const firstScale = allText && selectedEls.length > 0 ? (selectedEls[0].fontScale ?? 1) : null;
+          const allSameScale = allText && firstScale !== null && selectedEls.every(
+            (el) => Math.abs((el.fontScale ?? 1) - firstScale) < SCALE_TOLERANCE
+          );
+          const currentScale = allSameScale ? firstScale : null;
+
+          return (
+            <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
+              {allText && (
+                <>
+                  <ContextMenuLabel className="text-text-secondary text-xs px-2 py-1">
+                    Text Size
+                  </ContextMenuLabel>
+                  <div className="flex gap-1 px-2 pb-1">
+                    {FONT_SCALE_PRESETS.map((preset) => {
+                      const isSelected = currentScale !== null && Math.abs(preset.scale - currentScale) < SCALE_TOLERANCE;
+                      return (
+                        <button
+                          key={preset.key}
+                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            isSelected
+                              ? "bg-terracotta text-white"
+                              : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
+                          }`}
+                          onClick={() => setSelectedFontScale(preset.scale)}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <ContextMenuSeparator className="bg-terracotta/20" />
+                </>
+              )}
+              <ContextMenuItem className="text-white" onClick={duplicateSelected}>
+                <Copy className="w-4 h-4" />
+                Duplicate
+              </ContextMenuItem>
+              <ContextMenuItem variant="destructive" onClick={deleteSelected}>
+                <Trash2 className="w-4 h-4" />
+                Delete
+                <ContextMenuShortcut>Del</ContextMenuShortcut>
+              </ContextMenuItem>
+            </ContextMenuContent>
+          );
+        })()}
+      </ContextMenu>
 
       <input
         ref={fileInputRef}
@@ -1598,11 +1683,9 @@ interface CanvasElementsLayerProps {
   onElementMouseDown: (e: React.MouseEvent, elementId: string) => void;
   onTextDoubleClick: (element: CanvasElement) => void;
   onResizeStart: (e: React.MouseEvent, elementId: string, handle: ResizeHandle) => void;
-  onDeleteElement: (elementId: string) => void;
-  onDuplicateElement: (elementId: string) => void;
   onTextEditSave: (elementId: string, value: string) => void;
   onTextEditCancel: () => void;
-  onSetFontScale: (elementId: string, scale: number) => void;
+  onElementContextMenu: (elementId: string) => void;
 }
 
 function CanvasElementsLayer({
@@ -1616,33 +1699,31 @@ function CanvasElementsLayer({
   onElementMouseDown,
   onTextDoubleClick,
   onResizeStart,
-  onDeleteElement,
-  onDuplicateElement,
   onTextEditSave,
   onTextEditCancel,
-  onSetFontScale,
+  onElementContextMenu,
 }: CanvasElementsLayerProps) {
   return (
     <>
       {elements.map((element) => (
-        <ContextMenu key={element.id}>
-          <ContextMenuTrigger asChild>
-            <div
-              className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-                selectedElement === element.id || selectedElements.includes(element.id)
-                  ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
-                  : "hover:ring-2 hover:ring-terracotta/50"
-              }`}
-              style={{
-                left: element.x,
-                top: element.y,
-                width: element.width,
-                height: element.height,
-                transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
-              }}
-              onMouseDown={(e) => onElementMouseDown(e, element.id)}
-              onDoubleClick={() => element.type === "text" && onTextDoubleClick(element)}
-            >
+        <div
+          key={element.id}
+          className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
+            selectedElement === element.id || selectedElements.includes(element.id)
+              ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
+              : "hover:ring-2 hover:ring-terracotta/50"
+          }`}
+          style={{
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+          }}
+          onMouseDown={(e) => onElementMouseDown(e, element.id)}
+          onDoubleClick={() => element.type === "text" && onTextDoubleClick(element)}
+          onContextMenu={() => onElementContextMenu(element.id)}
+        >
               {element.type === "image" ? (
                 <>
                   <img
@@ -1765,47 +1846,7 @@ function CanvasElementsLayer({
                   )}
                 </>
               )}
-            </div>
-          </ContextMenuTrigger>
-          <ContextMenuContent className="bg-bg-panel/90 backdrop-blur-xl border-terracotta/20">
-            {element.type === "text" && (
-              <>
-                <ContextMenuLabel className="text-text-secondary text-xs px-2 py-1">
-                  Text Size
-                </ContextMenuLabel>
-                <div className="flex gap-1 px-2 pb-1">
-                  {FONT_SCALE_PRESETS.map((preset) => {
-                    const currentScale = element.fontScale ?? 1;
-                    const isSelected = Math.abs(preset.scale - currentScale) < SCALE_TOLERANCE;
-                    return (
-                      <button
-                        key={preset.key}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                          isSelected
-                            ? "bg-terracotta text-white"
-                            : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
-                        }`}
-                        onClick={() => onSetFontScale(element.id, preset.scale)}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <ContextMenuSeparator className="bg-terracotta/20" />
-              </>
-            )}
-            <ContextMenuItem className="text-white" onClick={() => onDuplicateElement(element.id)}>
-              <Copy className="w-4 h-4" />
-              Duplicate
-            </ContextMenuItem>
-            <ContextMenuItem variant="destructive" onClick={() => onDeleteElement(element.id)}>
-              <Trash2 className="w-4 h-4" />
-              Delete
-              <ContextMenuShortcut>Del</ContextMenuShortcut>
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+        </div>
       ))}
 
       {placingObjectType === "text" && previewPos && (
