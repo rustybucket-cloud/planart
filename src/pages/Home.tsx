@@ -129,7 +129,7 @@ export default function Home() {
         {/* Fixed Header Section */}
         <div className="flex-shrink-0 px-8 pt-12 pb-8">
           {/* Header */}
-          <header className="animate-in fade-in slide-in-from-top-4 duration-700">
+          <header className="animate-in fade-in slide-in-from-top-4 duration-700 fill-mode-backwards">
           <div className="flex items-end justify-between mb-6">
             <div>
               <h1 className="text-7xl font-black tracking-tighter mb-2 bg-gradient-to-br from-white via-white to-gray-500 bg-clip-text text-transparent leading-[1.1]">
@@ -291,12 +291,12 @@ function ItemGrid({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-backwards" style={{ animationDelay: '100ms' }}>
       {items.map((item, index) => (
         <div
           key={`${item.type}-${item.id}`}
           onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
-          className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
+          className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50 fill-mode-backwards"
           style={{ animationDelay: `${200 + index * 80}ms` }}
         >
           <div className={`aspect-video relative overflow-hidden ${item.type === "collection" && item.thumbnailContent ? "bg-bg-deep" : `bg-gradient-to-br ${getGradientByIndex(index)}`}`}>
@@ -361,12 +361,12 @@ function ItemList({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '100ms' }}>
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-backwards" style={{ animationDelay: '100ms' }}>
       {items.map((item, index) => (
         <div
           key={`${item.type}-${item.id}`}
           onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
-          className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4"
+          className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4 fill-mode-backwards"
           style={{ animationDelay: `${200 + index * 60}ms` }}
         >
           <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 relative">
