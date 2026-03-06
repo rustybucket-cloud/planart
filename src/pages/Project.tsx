@@ -37,6 +37,7 @@ export default function Project() {
   const [resolvedItems, setResolvedItems] = useState<ProjectItemResolved[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -190,6 +191,10 @@ export default function Project() {
     }
   };
 
+  const filteredItems = resolvedItems.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   if (isLoading) {
     return (
       <div className="h-screen bg-bg-deep text-white flex items-center justify-center">
@@ -325,9 +330,20 @@ export default function Project() {
               </div>
             </div>
 
-            {/* View controls */}
+            {/* Search and view controls */}
             {resolvedItems.length > 0 && (
-              <div className="flex justify-end">
+              <div className="flex gap-4 items-center">
+                <div className="flex-1 relative group">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary group-focus-within:text-terracotta transition-colors" strokeWidth={2} />
+                  <input
+                    type="text"
+                    placeholder="Search items in this project..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-bg-panel/60 border border-terracotta/20 rounded-xl text-white placeholder:text-text-secondary focus:outline-none focus:border-terracotta/50 focus:bg-bg-panel/80 backdrop-blur-sm transition-all duration-300"
+                  />
+                </div>
+
                 <div className="flex gap-2 bg-bg-panel/60 p-2 rounded-xl border border-terracotta/20">
                   <button
                     onClick={() => setViewMode("grid")}
@@ -400,11 +416,11 @@ export default function Project() {
           )}
 
           {/* Items Grid/List */}
-          {resolvedItems.length > 0 && (
+          {filteredItems.length > 0 && (
             viewMode === "grid" ? (
-              <ProjectItemGrid items={resolvedItems} onRemove={handleRemoveItem} />
+              <ProjectItemGrid items={filteredItems} onRemove={handleRemoveItem} />
             ) : (
-              <ProjectItemList items={resolvedItems} onRemove={handleRemoveItem} />
+              <ProjectItemList items={filteredItems} onRemove={handleRemoveItem} />
             )
           )}
         </div>

@@ -57,6 +57,7 @@ interface ProjectSummary {
 ## Project Page
 
 - Displays all items in the project in grid or list view
+- Search bar filters project items by name
 - Back navigation to Home page
 - Inline-editable project name (click pencil icon, confirm with Enter or check button)
 - "New" button creates canvases/collections directly inside the project

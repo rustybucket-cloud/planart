@@ -301,4 +301,24 @@ describe('Project Page', () => {
     expect(screen.getByText('Landscape Study')).toBeInTheDocument()
     expect(screen.queryByText('Portrait Refs')).not.toBeInTheDocument()
   })
+
+  it('should filter project items by search query', async () => {
+    render(
+      <BrowserRouter>
+        <Project />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('My Canvas')).toBeInTheDocument()
+      expect(screen.getByText('My Collection')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    const searchInput = screen.getByPlaceholderText(/search items in this project/i)
+    await user.type(searchInput, 'Canvas')
+
+    expect(screen.getByText('My Canvas')).toBeInTheDocument()
+    expect(screen.queryByText('My Collection')).not.toBeInTheDocument()
+  })
 })
