@@ -1189,11 +1189,11 @@ export default function Canvas() {
         // Convert data URL to binary
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
         const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-        
+
         // Write file to chosen location
         await writeFile(filePath, binaryData);
       }
-      
+
       setIsExportDialogOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
@@ -1246,9 +1246,8 @@ export default function Canvas() {
         <ContextMenuTrigger asChild>
           <div
             ref={canvasRef}
-            className={`fixed inset-0 top-[73px] select-none ${
-              resizingElement || groupResizing ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
-            }`}
+            className={`fixed inset-0 top-[73px] select-none ${resizingElement || groupResizing ? "" : placingObjectType ? "cursor-crosshair" : boxSelect ? "cursor-crosshair" : "cursor-default"
+              }`}
             style={{
               backgroundImage: `
                 radial-gradient(circle, rgba(212, 132, 94, 0.15) 1px, transparent 1px),
@@ -1330,11 +1329,10 @@ export default function Canvas() {
                       return (
                         <button
                           key={preset.key}
-                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                            isSelected
+                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${isSelected
                               ? "bg-terracotta text-white"
                               : "bg-terracotta/10 text-text-secondary hover:bg-terracotta/25 hover:text-white"
-                          }`}
+                            }`}
                           onClick={() => setSelectedFontScale(preset.scale)}
                         >
                           {preset.label}
@@ -1783,11 +1781,12 @@ function CanvasToolbar({
                 onClick={onToggleTextPlacement}
                 variant="ghost"
                 size="icon"
-                className={`w-12 h-12 transition-all duration-300 group ${
-                  placingObjectType === "text"
+                title="Add Text (T)"
+                aria-label="Add Text (T)"
+                className={`w-12 h-12 transition-all duration-300 group ${placingObjectType === "text"
                     ? "bg-terracotta/20 ring-2 ring-terracotta/50"
                     : "hover:bg-terracotta/20"
-                }`}
+                  }`}
               >
                 <Type className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
               </Button>
@@ -1803,11 +1802,12 @@ function CanvasToolbar({
                 onClick={onImageButtonClick}
                 variant="ghost"
                 size="icon"
-                className={`w-12 h-12 transition-all duration-300 group ${
-                  placingObjectType === "image"
+                title="Add Image (I)"
+                aria-label="Add Image (I)"
+                className={`w-12 h-12 transition-all duration-300 group ${placingObjectType === "image"
                     ? "bg-terracotta/20 ring-2 ring-terracotta/50"
                     : "hover:bg-terracotta/20"
-                }`}
+                  }`}
               >
                 <ImageIcon className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
               </Button>
@@ -1896,6 +1896,8 @@ function CanvasZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: CanvasZo
                 onClick={onZoomIn}
                 variant="ghost"
                 size="icon"
+                title="Zoom In (+)"
+                aria-label="Zoom In (+)"
                 className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
               >
                 <ZoomIn className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -1910,6 +1912,8 @@ function CanvasZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: CanvasZo
             <TooltipTrigger asChild>
               <button
                 onClick={onResetZoom}
+                title="Reset Zoom (0)"
+                aria-label="Reset Zoom (0)"
                 className="w-12 h-12 flex items-center justify-center hover:bg-terracotta/20 rounded-lg transition-all duration-300 font-mono text-xs text-text-secondary hover:text-terracotta"
               >
                 {Math.round(zoom * 100)}%
@@ -1926,6 +1930,8 @@ function CanvasZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: CanvasZo
                 onClick={onZoomOut}
                 variant="ghost"
                 size="icon"
+                title="Zoom Out (-)"
+                aria-label="Zoom Out (-)"
                 className="w-12 h-12 hover:bg-terracotta/20 transition-all duration-300 group"
               >
                 <ZoomOut className="w-5 h-5 group-hover:scale-110 transition-transform" strokeWidth={2} />
@@ -2036,11 +2042,10 @@ function CanvasElementsLayer({
       {elements.map((element) => (
         <div
           key={element.id}
-          className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-            selectedElement === element.id || selectedElements.includes(element.id)
+          className={`absolute cursor-grab active:cursor-grabbing transition-shadow duration-200 ${selectedElement === element.id || selectedElements.includes(element.id)
               ? "ring-2 ring-terracotta shadow-lg shadow-terracotta/30"
               : "hover:ring-2 hover:ring-terracotta/50"
-          }`}
+            }`}
           style={{
             left: element.x,
             top: element.y,
@@ -2052,128 +2057,128 @@ function CanvasElementsLayer({
           onDoubleClick={() => element.type === "text" && onTextDoubleClick(element)}
           onContextMenu={() => onElementContextMenu(element.id)}
         >
-              {element.type === "image" ? (
+          {element.type === "image" ? (
+            <>
+              <img
+                src={element.content}
+                alt="Canvas element"
+                className="w-full h-full object-cover rounded-lg"
+                draggable={false}
+              />
+              {selectedElement === element.id && (
                 <>
-                  <img
-                    src={element.content}
-                    alt="Canvas element"
-                    className="w-full h-full object-cover rounded-lg"
-                    draggable={false}
-                  />
-                  {selectedElement === element.id && (
-                    <>
-                      {CORNER_HANDLES.map((handle) => (
-                        <div
-                          key={handle}
-                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                  {CORNER_HANDLES.map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
                                      shadow-md shadow-black/30 z-10
                                      transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
-                          style={{
-                            cursor: HANDLE_CONFIGS[handle].cursor,
-                            ...HANDLE_CONFIGS[handle].position,
-                          }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
-                        />
-                      ))}
-                    </>
-                  )}
-                </>
-              ) : editingElementId === element.id ? (
-                <div className="w-full h-full rounded-lg p-2">
-                  <textarea
-                    autoFocus
-                    defaultValue={element.content === "Double-click to edit" ? "" : element.content}
-                    className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
-                    style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
-                    onBlur={(e) => onTextEditSave(element.id, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        onTextEditSave(element.id, e.currentTarget.value);
-                      } else if (e.key === "Escape") {
-                        onTextEditCancel();
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  />
-                  {selectedElement === element.id && (
-                    <>
-                      {/* Corner handles for scaling text */}
-                      {CORNER_HANDLES.map((handle) => (
-                        <div
-                          key={handle}
-                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
-                                     shadow-md shadow-black/30 z-10
-                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
-                          style={{
-                            cursor: HANDLE_CONFIGS[handle].cursor,
-                            ...HANDLE_CONFIGS[handle].position,
-                          }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
-                        />
-                      ))}
-                      {/* Edge handles for resizing container only */}
-                      {EDGE_HANDLES.map((handle) => (
-                        <div
-                          key={handle}
-                          className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
-                                     shadow-md shadow-black/30 z-10
-                                     transition-all duration-200 hover:scale-125 hover:bg-white"
-                          style={{
-                            cursor: HANDLE_CONFIGS[handle].cursor,
-                            ...HANDLE_CONFIGS[handle].position,
-                          }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
-                        />
-                      ))}
-                    </>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="w-full h-full flex items-center justify-center p-4">
-                    <p
-                      className="text-center break-words"
-                      style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
-                    >
-                      {element.content}
-                    </p>
-                  </div>
-                  {selectedElement === element.id && (
-                    <>
-                      {/* Corner handles for scaling text */}
-                      {CORNER_HANDLES.map((handle) => (
-                        <div
-                          key={handle}
-                          className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
-                                     shadow-md shadow-black/30 z-10
-                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
-                          style={{
-                            cursor: HANDLE_CONFIGS[handle].cursor,
-                            ...HANDLE_CONFIGS[handle].position,
-                          }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
-                        />
-                      ))}
-                      {/* Edge handles for resizing container only */}
-                      {EDGE_HANDLES.map((handle) => (
-                        <div
-                          key={handle}
-                          className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
-                                     shadow-md shadow-black/30 z-10
-                                     transition-all duration-200 hover:scale-125 hover:bg-white"
-                          style={{
-                            cursor: HANDLE_CONFIGS[handle].cursor,
-                            ...HANDLE_CONFIGS[handle].position,
-                          }}
-                          onMouseDown={(e) => onResizeStart(e, element.id, handle)}
-                        />
-                      ))}
-                    </>
-                  )}
+                      style={{
+                        cursor: HANDLE_CONFIGS[handle].cursor,
+                        ...HANDLE_CONFIGS[handle].position,
+                      }}
+                      onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                    />
+                  ))}
                 </>
               )}
+            </>
+          ) : editingElementId === element.id ? (
+            <div className="w-full h-full rounded-lg p-2">
+              <textarea
+                autoFocus
+                defaultValue={element.content === "Double-click to edit" ? "" : element.content}
+                className="w-full h-full bg-transparent text-white text-center resize-none outline-none"
+                style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
+                onBlur={(e) => onTextEditSave(element.id, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    onTextEditSave(element.id, e.currentTarget.value);
+                  } else if (e.key === "Escape") {
+                    onTextEditCancel();
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+              {selectedElement === element.id && (
+                <>
+                  {/* Corner handles for scaling text */}
+                  {CORNER_HANDLES.map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                      style={{
+                        cursor: HANDLE_CONFIGS[handle].cursor,
+                        ...HANDLE_CONFIGS[handle].position,
+                      }}
+                      onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                    />
+                  ))}
+                  {/* Edge handles for resizing container only */}
+                  {EDGE_HANDLES.map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-white"
+                      style={{
+                        cursor: HANDLE_CONFIGS[handle].cursor,
+                        ...HANDLE_CONFIGS[handle].position,
+                      }}
+                      onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="w-full h-full flex items-center justify-center p-4">
+                <p
+                  className="text-center break-words"
+                  style={{ fontFamily: "'Crimson Pro', serif", fontSize: `${getTextFontSize(element.fontScale)}px` }}
+                >
+                  {element.content}
+                </p>
+              </div>
+              {selectedElement === element.id && (
+                <>
+                  {/* Corner handles for scaling text */}
+                  {CORNER_HANDLES.map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute w-3 h-3 bg-terracotta rounded-full border-2 border-white
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-warm-orange"
+                      style={{
+                        cursor: HANDLE_CONFIGS[handle].cursor,
+                        ...HANDLE_CONFIGS[handle].position,
+                      }}
+                      onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                    />
+                  ))}
+                  {/* Edge handles for resizing container only */}
+                  {EDGE_HANDLES.map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute w-2 h-2 bg-white/80 rounded-sm border border-terracotta/50
+                                     shadow-md shadow-black/30 z-10
+                                     transition-all duration-200 hover:scale-125 hover:bg-white"
+                      style={{
+                        cursor: HANDLE_CONFIGS[handle].cursor,
+                        ...HANDLE_CONFIGS[handle].position,
+                      }}
+                      onMouseDown={(e) => onResizeStart(e, element.id, handle)}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          )}
         </div>
       ))}
 
@@ -2285,10 +2290,10 @@ function ExportDialog({
   // Calculate scale for full preview (90% of viewport)
   const fullPreviewScale = bounds
     ? Math.min(
-        (window.innerWidth * 0.9) / bounds.width,
-        (window.innerHeight * 0.9) / bounds.height,
-        1
-      )
+      (window.innerWidth * 0.9) / bounds.width,
+      (window.innerHeight * 0.9) / bounds.height,
+      1
+    )
     : 1;
 
   return (

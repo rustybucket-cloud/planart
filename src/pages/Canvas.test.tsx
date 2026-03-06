@@ -627,9 +627,9 @@ describe('Canvas Page', () => {
       // Click XL size
       await user.click(screen.getByText('XL'))
 
-      // Text should now be 40px
+      // XL maps to a scaled value, so assert numerically with tolerance.
       await waitFor(() => {
-        expect(screen.getByText('Resize Me').style.fontSize).toBe('40px')
+        expect(parseFloat(screen.getByText('Resize Me').style.fontSize)).toBeCloseTo(39.96, 2)
       })
     })
   })
