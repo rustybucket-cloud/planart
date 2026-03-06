@@ -83,6 +83,35 @@ pub struct ReferenceCollectionSummary {
     pub thumbnail_content: Option<String>,
 }
 
+// --- Project types ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItem {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub item_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectData {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub items: Vec<ProjectItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub updated_at: String,
+    pub item_count: usize,
+}
+
 fn get_canvases_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data = app
         .path()
@@ -313,6 +342,112 @@ fn delete_reference_collection(app: tauri::AppHandle, id: String) -> Result<(), 
     Ok(())
 }
 
+// --- Project commands ---
+
+fn get_projects_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let projects_dir = app_data.join("projects");
+
+    if !projects_dir.exists() {
+        fs::create_dir_all(&projects_dir)
+            .map_err(|e| format!("Failed to create projects dir: {}", e))?;
+    }
+
+    Ok(projects_dir)
+}
+
+#[tauri::command]
+fn create_project(app: tauri::AppHandle, name: String) -> Result<ProjectData, String> {
+    let projects_dir = get_projects_dir(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let project = ProjectData {
+        id: id.clone(),
+        name,
+        created_at: now.clone(),
+        updated_at: now,
+        items: vec![],
+    };
+
+    let file_path = projects_dir.join(format!("{}.json", id));
+    let json = serde_json::to_string_pretty(&project)
+        .map_err(|e| format!("Failed to serialize project: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write project file: {}", e))?;
+
+    Ok(project)
+}
+
+#[tauri::command]
+fn save_project(app: tauri::AppHandle, project: ProjectData) -> Result<(), String> {
+    let projects_dir = get_projects_dir(&app)?;
+    let file_path = projects_dir.join(format!("{}.json", project.id));
+
+    let json = serde_json::to_string_pretty(&project)
+        .map_err(|e| format!("Failed to serialize project: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write project file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn load_project(app: tauri::AppHandle, id: String) -> Result<ProjectData, String> {
+    let projects_dir = get_projects_dir(&app)?;
+    let file_path = projects_dir.join(format!("{}.json", id));
+
+    let json = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read project file: {}", e))?;
+    let project: ProjectData =
+        serde_json::from_str(&json).map_err(|e| format!("Failed to parse project: {}", e))?;
+
+    Ok(project)
+}
+
+#[tauri::command]
+fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectSummary>, String> {
+    let projects_dir = get_projects_dir(&app)?;
+    let mut summaries = Vec::new();
+
+    let entries =
+        fs::read_dir(&projects_dir).map_err(|e| format!("Failed to read projects dir: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().map_or(false, |ext| ext == "json") {
+            let json = fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read project file: {}", e))?;
+            let project: ProjectData = serde_json::from_str(&json)
+                .map_err(|e| format!("Failed to parse project: {}", e))?;
+
+            summaries.push(ProjectSummary {
+                id: project.id,
+                name: project.name,
+                updated_at: project.updated_at,
+                item_count: project.items.len(),
+            });
+        }
+    }
+
+    summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+    Ok(summaries)
+}
+
+#[tauri::command]
+fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let projects_dir = get_projects_dir(&app)?;
+    let file_path = projects_dir.join(format!("{}.json", id));
+
+    fs::remove_file(&file_path).map_err(|e| format!("Failed to delete project file: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn fetch_image_from_url(url: String) -> Result<String, String> {
     let response =
@@ -364,6 +499,11 @@ pub fn run() {
             load_reference_collection,
             list_reference_collections,
             delete_reference_collection,
+            create_project,
+            save_project,
+            load_project,
+            list_projects,
+            delete_project,
             fetch_image_from_url
         ])
         .run(tauri::generate_context!())

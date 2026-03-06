@@ -1,163 +1,869 @@
 import { useParams, useNavigate } from "react-router";
-import { ArrowLeft, Plus, Grid3x3, LayoutGrid, Settings, Trash2 } from "lucide-react";
-import { useState } from "react";
-
-// Mock data
-const mockCanvases = [
-  { id: 1, name: "Hero Section v3", lastModified: "1 hour ago", thumbnail: "gradient-1" },
-  { id: 2, name: "Mobile App Flow", lastModified: "3 hours ago", thumbnail: "gradient-2" },
-  { id: 3, name: "Dashboard Layout", lastModified: "5 hours ago", thumbnail: "gradient-3" },
-  { id: 4, name: "Landing Page", lastModified: "Yesterday", thumbnail: "gradient-5" },
-];
+import { ArrowLeft, Plus, Grid3x3, LayoutGrid, Trash2, FileImage, Images, FolderOpen, Loader2, Pencil, Check, X, Search, PackagePlus } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { projectApi } from "@/services/projectApi";
+import { canvasApi } from "@/services/canvasApi";
+import { referenceCollectionApi } from "@/services/referenceCollectionApi";
+import type { ProjectData } from "@/types/project";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 type ViewMode = "grid" | "list";
+
+type ProjectItemResolved =
+  | { type: "canvas"; id: string; name: string; updatedAt: string; elementCount: number }
+  | { type: "collection"; id: string; name: string; updatedAt: string; imageCount: number; thumbnailContent?: string };
 
 export default function Project() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [resolvedItems, setResolvedItems] = useState<ProjectItemResolved[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "project" | "item"; id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showAddExisting, setShowAddExisting] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const loadProject = useCallback(async (projectId: string) => {
+    try {
+      const data = await projectApi.load(projectId);
+      setProject(data);
+      setEditName(data.name);
+      await resolveItems(data);
+    } catch (error) {
+      console.error("Failed to load project:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    loadProject(id);
+  }, [id, loadProject]);
+
+  const resolveItems = async (data: ProjectData) => {
+    const [allCanvases, allCollections] = await Promise.all([
+      canvasApi.list(),
+      referenceCollectionApi.list(),
+    ]);
+
+    const canvasMap = new Map(allCanvases.map((c) => [c.id, c]));
+    const collectionMap = new Map(allCollections.map((c) => [c.id, c]));
+
+    const resolved: ProjectItemResolved[] = [];
+    for (const item of data.items) {
+      if (item.type === "canvas") {
+        const canvas = canvasMap.get(item.id);
+        if (canvas) resolved.push({ type: "canvas", ...canvas });
+      } else {
+        const collection = collectionMap.get(item.id);
+        if (collection) resolved.push({ type: "collection", ...collection });
+      }
+    }
+    setResolvedItems(resolved);
+  };
+
+  const handleStartEdit = () => {
+    setIsEditing(true);
+    setTimeout(() => nameInputRef.current?.select(), 0);
+  };
+
+  const handleSaveName = async () => {
+    if (!project || !editName.trim()) return;
+    const updated = { ...project, name: editName.trim(), updatedAt: new Date().toISOString() };
+    await projectApi.save(updated);
+    setProject(updated);
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditName(project?.name ?? "");
+    setIsEditing(false);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSaveName();
+    if (e.key === "Escape") handleCancelEdit();
+  };
+
+  const handleCreateCanvas = async () => {
+    if (!project) return;
+    setShowCreateMenu(false);
+    try {
+      const canvas = await canvasApi.create("Untitled Canvas");
+      const updated: ProjectData = {
+        ...project,
+        items: [...project.items, { id: canvas.id, type: "canvas" }],
+        updatedAt: new Date().toISOString(),
+      };
+      await projectApi.save(updated);
+      navigate(`/canvas/${canvas.id}`);
+    } catch (error) {
+      console.error("Failed to create canvas:", error);
+    }
+  };
+
+  const handleCreateCollection = async () => {
+    if (!project) return;
+    setShowCreateMenu(false);
+    try {
+      const collection = await referenceCollectionApi.create("Untitled Collection");
+      const updated: ProjectData = {
+        ...project,
+        items: [...project.items, { id: collection.id, type: "collection" }],
+        updatedAt: new Date().toISOString(),
+      };
+      await projectApi.save(updated);
+      navigate(`/collection/${collection.id}`);
+    } catch (error) {
+      console.error("Failed to create collection:", error);
+    }
+  };
+
+  const handleRemoveItem = (e: React.MouseEvent, itemId: string, name: string) => {
+    e.stopPropagation();
+    setDeleteTarget({ type: "item", id: itemId, name });
+  };
+
+  const handleDeleteProject = () => {
+    if (!project) return;
+    setDeleteTarget({ type: "project", id: project.id, name: project.name });
+  };
+
+  const handleAddExisting = async (items: Array<{ id: string; type: "canvas" | "collection" }>) => {
+    if (!project || items.length === 0) return;
+    const updated: ProjectData = {
+      ...project,
+      items: [...project.items, ...items.map(({ id, type }) => ({ id, type }))],
+      updatedAt: new Date().toISOString(),
+    };
+    await projectApi.save(updated);
+    setProject(updated);
+    await resolveItems(updated);
+    setShowAddExisting(false);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || !project) return;
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.type === "project") {
+        await projectApi.delete(project.id);
+        navigate("/");
+      } else {
+        const updated: ProjectData = {
+          ...project,
+          items: project.items.filter((i) => i.id !== deleteTarget.id),
+          updatedAt: new Date().toISOString(),
+        };
+        await projectApi.save(updated);
+        setProject(updated);
+        setResolvedItems((prev) => prev.filter((i) => i.id !== deleteTarget.id));
+        setDeleteTarget(null);
+      }
+    } catch (error) {
+      console.error("Failed to delete:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="h-screen bg-bg-deep text-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="h-screen bg-bg-deep text-white flex flex-col items-center justify-center gap-4">
+        <FolderOpen className="w-16 h-16 text-text-secondary" strokeWidth={1.5} />
+        <p className="text-text-secondary text-lg">Project not found</p>
+        <button onClick={() => navigate("/")} className="text-terracotta hover:underline font-medium">
+          Back to home
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Grain texture */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-        }}
-      />
+    <div className="h-screen bg-bg-deep text-white relative overflow-hidden flex flex-col">
+      {/* Decorative background elements */}
+      <div className="fixed top-20 right-[-10%] w-96 h-96 bg-terracotta/10 rounded-full blur-[120px] animate-pulse" />
+      <div className="fixed bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-terracotta/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
 
-      {/* Background elements */}
-      <div className="fixed top-20 right-[-10%] w-96 h-96 bg-[#FF6B5A]/10 rounded-full blur-[120px]" />
+      <div className="relative z-10 max-w-[1800px] mx-auto w-full flex flex-col h-full">
+        {/* Fixed Header Section */}
+        <div className="flex-shrink-0 px-8 pt-12 pb-8">
+          <header className="animate-in fade-in slide-in-from-top-4 duration-700 fill-mode-backwards">
+            <button
+              onClick={() => navigate("/")}
+              className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-6 group"
+            >
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" strokeWidth={2.5} />
+              <span className="font-bold">Back to home</span>
+            </button>
 
-      <div className="relative z-10 max-w-[1800px] mx-auto px-8 py-12">
-        {/* Header */}
-        <header className="mb-12">
-          <button
-            onClick={() => navigate("/")}
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6 group"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" strokeWidth={2.5} />
-            <span className="font-bold">Back to home</span>
-          </button>
-
-          <div className="flex items-end justify-between">
-            <div>
-              <h1 className="text-6xl font-black tracking-tighter mb-2 bg-gradient-to-br from-white via-white to-gray-500 bg-clip-text text-transparent">
-                Project {id}
-              </h1>
-              <p className="text-gray-400 text-lg font-medium">
-                {mockCanvases.length} canvases
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button className="p-3 rounded-lg hover:bg-white/10 transition-colors">
-                <Settings className="w-6 h-6" strokeWidth={2.5} />
-              </button>
-              <button className="p-3 rounded-lg hover:bg-red-500/20 text-red-500 transition-colors">
-                <Trash2 className="w-6 h-6" strokeWidth={2.5} />
-              </button>
-              <button className="group relative px-6 py-3 bg-gradient-to-r from-[#FF6B5A] to-[#FB923C] text-white font-bold rounded-xl hover:shadow-[0_0_30px_rgba(255,107,90,0.4)] transition-all duration-300 hover:scale-105 active:scale-95">
-                <span className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" strokeWidth={3} />
-                  New Canvas
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* View controls */}
-          <div className="flex justify-end mt-6">
-            <div className="flex gap-2 bg-white/5 p-2 rounded-xl border-2 border-white/10">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`p-3 rounded-lg transition-all duration-300 ${
-                  viewMode === "grid"
-                    ? "bg-[#FF6B5A] text-white shadow-lg"
-                    : "text-gray-400 hover:text-white hover:bg-white/10"
-                }`}
-              >
-                <LayoutGrid className="w-5 h-5" strokeWidth={2.5} />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`p-3 rounded-lg transition-all duration-300 ${
-                  viewMode === "list"
-                    ? "bg-[#FF6B5A] text-white shadow-lg"
-                    : "text-gray-400 hover:text-white hover:bg-white/10"
-                }`}
-              >
-                <Grid3x3 className="w-5 h-5" strokeWidth={2.5} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Canvases Grid */}
-        {viewMode === "grid" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {mockCanvases.map((canvas, index) => (
-              <div
-                key={canvas.id}
-                onClick={() => navigate(`/canvas/${canvas.id}`)}
-                className="group relative bg-gradient-to-br from-white/5 to-white/[0.02] border-2 border-white/10 rounded-2xl overflow-hidden hover:border-[#FF6B5A]/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(255,107,90,0.15)] cursor-pointer animate-in fade-in zoom-in-50"
-                style={{ animationDelay: `${index * 80}ms` }}
-              >
-                <div className={`aspect-video bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} relative overflow-hidden`}>
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="w-16 h-16 rounded-full bg-[#FF6B5A] flex items-center justify-center shadow-lg">
-                      <span className="text-2xl">✏️</span>
-                    </div>
+            <div className="flex items-end justify-between mb-6">
+              <div className="flex-1 min-w-0">
+                {isEditing ? (
+                  <div className="flex items-center gap-3">
+                    <input
+                      ref={nameInputRef}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={handleNameKeyDown}
+                      className="text-5xl font-black tracking-tighter bg-transparent border-b-2 border-terracotta outline-none text-white w-full max-w-[600px]"
+                    />
+                    <button onClick={handleSaveName} className="p-2 hover:bg-terracotta/20 rounded-lg transition-colors">
+                      <Check className="w-6 h-6 text-terracotta" strokeWidth={2.5} />
+                    </button>
+                    <button onClick={handleCancelEdit} className="p-2 hover:bg-red-500/20 rounded-lg transition-colors">
+                      <X className="w-6 h-6 text-text-secondary" strokeWidth={2.5} />
+                    </button>
                   </div>
-                </div>
-
-                <div className="p-5">
-                  <h3 className="text-lg font-bold mb-1 group-hover:text-[#FF6B5A] transition-colors truncate">
-                    {canvas.name}
-                  </h3>
-                  <p className="text-xs text-gray-600 font-medium">
-                    {canvas.lastModified}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {mockCanvases.map((canvas, index) => (
-              <div
-                key={canvas.id}
-                onClick={() => navigate(`/canvas/${canvas.id}`)}
-                className="group flex items-center gap-4 bg-gradient-to-r from-white/5 to-white/[0.02] border-2 border-white/10 rounded-xl p-4 hover:border-[#FF6B5A]/50 transition-all duration-300 hover:bg-white/10 cursor-pointer animate-in fade-in slide-in-from-left-4"
-                style={{ animationDelay: `${index * 60}ms` }}
-              >
-                <div className={`w-20 h-14 rounded-lg bg-gradient-to-br ${getThumbnailGradient(canvas.thumbnail)} flex-shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold truncate group-hover:text-[#FF6B5A] transition-colors">
-                    {canvas.name}
-                  </h3>
-                </div>
-                <p className="text-sm text-gray-600 font-medium flex-shrink-0">
-                  {canvas.lastModified}
+                ) : (
+                  <div className="flex items-center gap-3 group/name">
+                    <h1 className="text-7xl font-black tracking-tighter bg-gradient-to-br from-white via-white to-gray-500 bg-clip-text text-transparent leading-[1.1] truncate">
+                      {project.name}
+                    </h1>
+                    <button
+                      onClick={handleStartEdit}
+                      className="p-2 hover:bg-terracotta/20 rounded-lg transition-all opacity-0 group-hover/name:opacity-100"
+                    >
+                      <Pencil className="w-5 h-5 text-text-secondary" strokeWidth={2} />
+                    </button>
+                  </div>
+                )}
+                <p className="text-gray-400 text-lg font-medium mt-1">
+                  {resolvedItems.length} item{resolvedItems.length !== 1 ? "s" : ""}
                 </p>
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={handleDeleteProject}
+                  className="p-2.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
+                >
+                  <Trash2 className="w-4.5 h-4.5" strokeWidth={2} />
+                </button>
+
+                <div className="relative">
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => setShowCreateMenu((v) => !v)}
+                          aria-label="Add to project"
+                          className="group relative p-2.5 bg-gradient-to-r from-terracotta to-warm-orange text-white rounded-xl hover:shadow-[0_0_20px_rgba(212,132,94,0.3)] transition-all duration-300 active:scale-95 overflow-hidden"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                          <Plus className="relative w-5 h-5" strokeWidth={2.5} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" sideOffset={8}>
+                        Add to project
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  {showCreateMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowCreateMenu(false)} />
+                      <div className="absolute right-0 top-full mt-2 z-50 bg-bg-panel/95 backdrop-blur-xl border border-terracotta/20 rounded-xl shadow-2xl shadow-black/40 overflow-hidden min-w-[200px] animate-in fade-in zoom-in-95 duration-200">
+                        <button
+                          onClick={handleCreateCanvas}
+                          className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-terracotta/10 transition-colors text-left"
+                        >
+                          <FileImage className="w-5 h-5 text-terracotta" />
+                          <span className="font-medium">New Canvas</span>
+                        </button>
+                        <div className="h-px bg-terracotta/10" />
+                        <button
+                          onClick={handleCreateCollection}
+                          className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-terracotta/10 transition-colors text-left"
+                        >
+                          <Images className="w-5 h-5 text-terracotta" />
+                          <span className="font-medium">New Collection</span>
+                        </button>
+                        <div className="h-px bg-terracotta/10" />
+                        <button
+                          onClick={() => { setShowCreateMenu(false); setShowAddExisting(true); }}
+                          className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-terracotta/10 transition-colors text-left"
+                        >
+                          <PackagePlus className="w-5 h-5 text-terracotta" />
+                          <span className="font-medium">Add Existing...</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* View controls */}
+            {resolvedItems.length > 0 && (
+              <div className="flex justify-end">
+                <div className="flex gap-2 bg-bg-panel/60 p-2 rounded-xl border border-terracotta/20">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`p-3 rounded-lg transition-all duration-300 ${
+                      viewMode === "grid"
+                        ? "bg-terracotta text-white shadow-lg"
+                        : "text-text-secondary hover:text-white hover:bg-terracotta/20"
+                    }`}
+                  >
+                    <LayoutGrid className="w-5 h-5" strokeWidth={2} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`p-3 rounded-lg transition-all duration-300 ${
+                      viewMode === "list"
+                        ? "bg-terracotta text-white shadow-lg"
+                        : "text-text-secondary hover:text-white hover:bg-terracotta/20"
+                    }`}
+                  >
+                    <Grid3x3 className="w-5 h-5" strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </header>
+        </div>
+
+        {/* Scrollable Content Section */}
+        <div className="flex-1 overflow-y-auto px-8 pb-12 relative">
+          <div className="sticky top-0 left-0 right-0 h-4 bg-gradient-to-b from-bg-deep to-transparent pointer-events-none z-10" />
+
+          {/* Empty State */}
+          {resolvedItems.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-terracotta to-warm-orange flex items-center justify-center mb-6">
+                <FolderOpen className="w-12 h-12 text-white" strokeWidth={2} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Empty project</h2>
+              <p className="text-text-secondary mb-6">Add a canvas or collection to get started</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreateCanvas}
+                  className="px-6 py-3 bg-gradient-to-r from-terracotta to-warm-orange text-white font-bold rounded-xl hover:shadow-[0_0_30px_rgba(212,132,94,0.4)] transition-all duration-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <Plus className="w-5 h-5" strokeWidth={2.5} />
+                    New Canvas
+                  </span>
+                </button>
+                <button
+                  onClick={handleCreateCollection}
+                  className="px-6 py-3 border border-terracotta/30 text-white font-bold rounded-xl hover:bg-terracotta/10 hover:border-terracotta/50 transition-all duration-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <Images className="w-5 h-5" strokeWidth={2} />
+                    New Collection
+                  </span>
+                </button>
+                <button
+                  onClick={() => setShowAddExisting(true)}
+                  className="px-6 py-3 border border-terracotta/30 text-white font-bold rounded-xl hover:bg-terracotta/10 hover:border-terracotta/50 transition-all duration-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <PackagePlus className="w-5 h-5" strokeWidth={2} />
+                    Add Existing
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Items Grid/List */}
+          {resolvedItems.length > 0 && (
+            viewMode === "grid" ? (
+              <ProjectItemGrid items={resolvedItems} onRemove={handleRemoveItem} />
+            ) : (
+              <ProjectItemList items={resolvedItems} onRemove={handleRemoveItem} />
+            )
+          )}
+        </div>
       </div>
+
+      <ProjectDeleteDialog
+        target={deleteTarget}
+        isDeleting={isDeleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {project && (
+        <AddExistingDialog
+          open={showAddExisting}
+          onOpenChange={setShowAddExisting}
+          projectItems={project.items}
+          onAdd={handleAddExisting}
+        />
+      )}
     </div>
   );
 }
 
-function getThumbnailGradient(thumbnail: string): string {
-  const gradients: Record<string, string> = {
-    "gradient-1": "from-[#FF6B5A] via-[#FB923C] to-[#FBBF24]", // Coral Sunset
-    "gradient-2": "from-[#2DD4BF] via-[#06B6D4] to-[#0284C7]", // Teal Ocean
-    "gradient-3": "from-[#FB923C] via-[#FF6B5A] to-[#EC4899]", // Warm Blend
-    "gradient-4": "from-[#10B981] via-[#2DD4BF] to-[#06B6D4]", // Cool Mint
-    "gradient-5": "from-[#FF6B5A] to-[#2DD4BF]", // Coral Teal
+// --- Grid / List views ---
+
+function getGradientByIndex(index: number): string {
+  const gradients = [
+    "from-terracotta via-warm-orange to-golden-earth",
+    "from-warm-orange via-terracotta to-[#c97a54]",
+    "from-[#e89863] via-terracotta to-warm-orange",
+    "from-terracotta via-[#e89863] to-[#f0ac7b]",
+    "from-terracotta to-warm-orange",
+    "from-golden-earth via-warm-orange to-terracotta",
+  ];
+  return gradients[index % gradients.length];
+}
+
+function formatRelativeTime(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  return date.toLocaleDateString();
+}
+
+function getItemSubtext(item: ProjectItemResolved): string {
+  if (item.type === "canvas") return `${item.elementCount} object${item.elementCount !== 1 ? "s" : ""}`;
+  return `${item.imageCount} image${item.imageCount !== 1 ? "s" : ""}`;
+}
+
+function ProjectItemGrid({
+  items,
+  onRemove,
+}: {
+  items: ProjectItemResolved[];
+  onRemove: (e: React.MouseEvent, id: string, name: string) => void;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-backwards" style={{ animationDelay: '100ms' }}>
+      {items.map((item, index) => (
+        <div
+          key={`${item.type}-${item.id}`}
+          onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
+          className="group relative bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-2xl overflow-hidden hover:border-terracotta/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,132,94,0.15)] cursor-pointer animate-in fade-in zoom-in-50 fill-mode-backwards"
+          style={{ animationDelay: `${200 + index * 80}ms` }}
+        >
+          <div className={`aspect-video relative overflow-hidden ${item.type === "collection" && item.thumbnailContent ? "bg-bg-deep" : `bg-gradient-to-br ${getGradientByIndex(index)}`}`}>
+            {item.type === "collection" && item.thumbnailContent ? (
+              <img src={item.thumbnailContent} alt="" className="w-full h-full object-cover" />
+            ) : item.type === "collection" ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <Images className="w-12 h-12 text-white/60" strokeWidth={1.5} />
+              </div>
+            ) : null}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+              <div className="w-16 h-16 rounded-full bg-terracotta flex items-center justify-center shadow-lg">
+                {item.type === "canvas" ? (
+                  <FileImage className="w-8 h-8 text-white" strokeWidth={2} />
+                ) : (
+                  <Images className="w-8 h-8 text-white" strokeWidth={2} />
+                )}
+              </div>
+            </div>
+            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1 bg-black/50 backdrop-blur-sm rounded-lg text-xs font-medium text-white/80">
+              {item.type === "canvas" ? (
+                <FileImage className="w-3.5 h-3.5" strokeWidth={2} />
+              ) : (
+                <Images className="w-3.5 h-3.5" strokeWidth={2} />
+              )}
+              {item.type === "canvas" ? "Canvas" : "Collection"}
+            </div>
+            <button
+              onClick={(e) => onRemove(e, item.id, item.name)}
+              className="absolute top-2 right-2 z-10 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+              title="Remove from project"
+            >
+              <X className="w-4 h-4 text-white" strokeWidth={2} />
+            </button>
+          </div>
+          <div className="p-5">
+            <h3 className="text-lg font-bold mb-1 group-hover:text-terracotta transition-colors truncate">
+              {item.name}
+            </h3>
+            <p className="text-sm text-text-secondary font-medium mb-1">
+              {getItemSubtext(item)}
+            </p>
+            <p className="text-xs text-text-secondary font-mono">
+              {formatRelativeTime(item.updatedAt)}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProjectItemList({
+  items,
+  onRemove,
+}: {
+  items: ProjectItemResolved[];
+  onRemove: (e: React.MouseEvent, id: string, name: string) => void;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-backwards" style={{ animationDelay: '100ms' }}>
+      {items.map((item, index) => (
+        <div
+          key={`${item.type}-${item.id}`}
+          onClick={() => navigate(item.type === "canvas" ? `/canvas/${item.id}` : `/collection/${item.id}`)}
+          className="group flex items-center gap-4 bg-bg-panel/60 backdrop-blur-sm border border-terracotta/20 rounded-xl p-4 hover:border-terracotta/50 transition-all duration-300 hover:bg-bg-panel/80 cursor-pointer animate-in fade-in slide-in-from-left-4 fill-mode-backwards"
+          style={{ animationDelay: `${200 + index * 60}ms` }}
+        >
+          <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 relative">
+            {item.type === "collection" && item.thumbnailContent ? (
+              <img src={item.thumbnailContent} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className={`w-full h-full bg-gradient-to-br ${getGradientByIndex(index)} flex items-center justify-center`}>
+                {item.type === "collection" && (
+                  <Images className="w-6 h-6 text-white/60" strokeWidth={1.5} />
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-text-secondary flex-shrink-0">
+            {item.type === "canvas" ? (
+              <FileImage className="w-4 h-4" strokeWidth={2} />
+            ) : (
+              <Images className="w-4 h-4" strokeWidth={2} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold truncate group-hover:text-terracotta transition-colors">
+              {item.name}
+            </h3>
+            <p className="text-sm text-text-secondary font-medium">
+              {getItemSubtext(item)}
+            </p>
+          </div>
+          <p className="text-sm text-text-secondary font-mono flex-shrink-0">
+            {formatRelativeTime(item.updatedAt)}
+          </p>
+          <button
+            onClick={(e) => onRemove(e, item.id, item.name)}
+            className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+            title="Remove from project"
+          >
+            <X className="w-4 h-4" strokeWidth={2} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Delete / Remove Dialog ---
+
+function ProjectDeleteDialog({
+  target,
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  target: { type: "project" | "item"; id: string; name: string } | null;
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isProject = target?.type === "project";
+  return (
+    <AlertDialog open={target !== null} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent className="bg-bg-panel border-terracotta/20 text-white">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {isProject ? "Delete this project?" : "Remove from project?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-text-secondary">
+            {isProject
+              ? `"${target?.name}" will be permanently deleted. Items inside this project will not be deleted.`
+              : `"${target?.name}" will be removed from this project. The item itself will not be deleted.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="border border-terracotta/30 bg-bg-deep/80 text-white hover:bg-terracotta/20 hover:text-white">
+            Cancel
+          </AlertDialogCancel>
+          <Button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className={isProject ? "bg-red-600 text-white hover:bg-red-700" : "bg-terracotta text-white hover:bg-terracotta/80"}
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {isProject ? "Deleting..." : "Removing..."}
+              </>
+            ) : (
+              isProject ? "Delete" : "Remove"
+            )}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// --- Add Existing Items Dialog ---
+
+type AvailableItem =
+  | { type: "canvas"; id: string; name: string; updatedAt: string; detail: string }
+  | { type: "collection"; id: string; name: string; updatedAt: string; detail: string };
+
+function AddExistingDialog({
+  open,
+  onOpenChange,
+  projectItems,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectItems: Array<{ id: string; type: string }>;
+  onAdd: (items: Array<{ id: string; type: "canvas" | "collection" }>) => Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [available, setAvailable] = useState<AvailableItem[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setSearch("");
+    setSelected(new Set());
+    setIsLoading(true);
+
+    const existingIds = new Set(projectItems.map((i) => i.id));
+    Promise.all([canvasApi.list(), referenceCollectionApi.list()])
+      .then(([canvases, collections]) => {
+        const items: AvailableItem[] = [
+          ...canvases
+            .filter((c) => !existingIds.has(c.id))
+            .map((c): AvailableItem => ({
+              type: "canvas",
+              id: c.id,
+              name: c.name,
+              updatedAt: c.updatedAt,
+              detail: `${c.elementCount} object${c.elementCount !== 1 ? "s" : ""}`,
+            })),
+          ...collections
+            .filter((c) => !existingIds.has(c.id))
+            .map((c): AvailableItem => ({
+              type: "collection",
+              id: c.id,
+              name: c.name,
+              updatedAt: c.updatedAt,
+              detail: `${c.imageCount} image${c.imageCount !== 1 ? "s" : ""}`,
+            })),
+        ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        setAvailable(items);
+      })
+      .catch((error) => {
+        console.error("Failed to load available items:", error);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [open, projectItems]);
+
+  const toggleItem = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
-  return gradients[thumbnail] || gradients["gradient-1"];
+
+  const handleConfirm = async () => {
+    const items = available
+      .filter((i) => selected.has(i.id))
+      .map(({ id, type }) => ({ id, type }));
+    setIsSaving(true);
+    try {
+      await onAdd(items);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const filtered = available.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="bg-bg-panel border-terracotta/20 text-white sm:max-w-lg p-0 gap-0 overflow-hidden"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }}
+      >
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="text-xl font-bold">Add existing items</DialogTitle>
+          <DialogDescription className="text-text-secondary text-sm">
+            Select canvases and collections to add to this project.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Search input */}
+        <div className="px-6 pt-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search items..."
+              className="w-full pl-10 pr-4 py-2.5 bg-bg-deep/80 border border-terracotta/20 rounded-lg text-white placeholder:text-text-secondary focus:outline-none focus:border-terracotta/50 transition-colors text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Item list */}
+        <div className="px-6 py-4 max-h-[320px] min-h-[200px] overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-terracotta" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
+              {available.length === 0 ? (
+                <>
+                  <PackagePlus className="w-10 h-10 mb-3 opacity-40" />
+                  <p className="text-sm font-medium">No items available</p>
+                  <p className="text-xs mt-1">All canvases and collections are already in this project.</p>
+                </>
+              ) : (
+                <>
+                  <Search className="w-10 h-10 mb-3 opacity-40" />
+                  <p className="text-sm font-medium">No matches for &ldquo;{search}&rdquo;</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filtered.map((item) => {
+                const isSelected = selected.has(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleItem(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-left ${
+                      isSelected
+                        ? "bg-terracotta/15 border border-terracotta/40"
+                        : "hover:bg-bg-deep/60 border border-transparent"
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <div
+                      className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-all duration-200 ${
+                        isSelected
+                          ? "bg-terracotta border-terracotta"
+                          : "border-text-secondary/40"
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                    </div>
+
+                    {/* Icon */}
+                    <div className="flex-shrink-0">
+                      {item.type === "canvas" ? (
+                        <FileImage className="w-4 h-4 text-terracotta" strokeWidth={2} />
+                      ) : (
+                        <Images className="w-4 h-4 text-terracotta" strokeWidth={2} />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-xs text-text-secondary">{item.detail}</p>
+                    </div>
+
+                    {/* Type badge */}
+                    <span className="text-xs text-text-secondary font-medium flex-shrink-0">
+                      {item.type === "canvas" ? "Canvas" : "Collection"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 pt-2 flex items-center justify-between border-t border-terracotta/10">
+          <p className="text-xs text-text-secondary">
+            {selected.size > 0
+              ? `${selected.size} item${selected.size !== 1 ? "s" : ""} selected`
+              : "No items selected"}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="border-terracotta/30 bg-bg-deep/80 text-white hover:bg-terracotta/20 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={selected.size === 0 || isSaving}
+              className="bg-terracotta text-white hover:bg-terracotta/80 disabled:opacity-50"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                `Add ${selected.size > 0 ? selected.size : ""} item${selected.size !== 1 ? "s" : ""}`
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
