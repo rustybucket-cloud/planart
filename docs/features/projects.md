@@ -67,7 +67,9 @@ interface ProjectSummary {
   - Search input filters items by name
   - Multi-select with checkboxes; confirm to add all selected items at once
   - Also available as a button in the empty state
-- Items can be removed from the project without deleting the underlying entity
+- Each item has a three-dot menu (visible on hover) with two options:
+  - **Remove from project**: removes the item reference without deleting the underlying canvas/collection
+  - **Delete**: permanently deletes the canvas/collection itself (and removes it from the project)
 - Delete project button (with confirmation; does not delete contained items)
 
 ## Key Design Decisions

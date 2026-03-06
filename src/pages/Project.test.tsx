@@ -32,6 +32,7 @@ vi.mock('@/services/canvasApi', () => ({
   canvasApi: {
     list: vi.fn(),
     create: vi.fn(),
+    delete: vi.fn(),
   },
 }))
 
@@ -39,6 +40,7 @@ vi.mock('@/services/referenceCollectionApi', () => ({
   referenceCollectionApi: {
     list: vi.fn(),
     create: vi.fn(),
+    delete: vi.fn(),
   },
 }))
 
@@ -320,5 +322,107 @@ describe('Project Page', () => {
 
     expect(screen.getByText('My Canvas')).toBeInTheDocument()
     expect(screen.queryByText('My Collection')).not.toBeInTheDocument()
+  })
+
+  it('should show a three-dot menu on item cards with remove and delete options', async () => {
+    render(
+      <BrowserRouter>
+        <Project />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('My Canvas')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    const menuButtons = screen.getAllByRole('button', { name: /item options/i })
+    expect(menuButtons.length).toBeGreaterThan(0)
+
+    await user.click(menuButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Remove from project')).toBeInTheDocument()
+      expect(screen.getByText('Delete canvas')).toBeInTheDocument()
+    })
+  })
+
+  it('should remove item from project via the dropdown menu', async () => {
+    render(
+      <BrowserRouter>
+        <Project />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('My Canvas')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    const menuButtons = screen.getAllByRole('button', { name: /item options/i })
+    await user.click(menuButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Remove from project')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Remove from project'))
+
+    // Should show confirmation dialog
+    await waitFor(() => {
+      expect(screen.getByText('Remove from project?')).toBeInTheDocument()
+      expect(screen.getByText(/will be removed from this project/)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+
+    await waitFor(() => {
+      expect(projectApi.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [{ id: 'col-1', type: 'collection' }],
+        })
+      )
+    })
+  })
+
+  it('should permanently delete item via the dropdown menu', async () => {
+    vi.mocked(canvasApi.delete).mockResolvedValue(undefined)
+
+    render(
+      <BrowserRouter>
+        <Project />
+      </BrowserRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('My Canvas')).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    const menuButtons = screen.getAllByRole('button', { name: /item options/i })
+    await user.click(menuButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete canvas')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByText('Delete canvas'))
+
+    // Should show destructive confirmation dialog
+    await waitFor(() => {
+      expect(screen.getByText('Delete this canvas?')).toBeInTheDocument()
+      expect(screen.getByText(/will be permanently deleted. This cannot be undone./)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(canvasApi.delete).toHaveBeenCalledWith('canvas-1')
+      expect(projectApi.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [{ id: 'col-1', type: 'collection' }],
+        })
+      )
+    })
   })
 })

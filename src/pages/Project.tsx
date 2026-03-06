@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router";
-import { ArrowLeft, Plus, Grid3x3, LayoutGrid, Trash2, FileImage, Images, FolderOpen, Loader2, Pencil, Check, X, Search, PackagePlus } from "lucide-react";
+import { ArrowLeft, Plus, Grid3x3, LayoutGrid, Trash2, FileImage, Images, FolderOpen, Loader2, Pencil, Check, X, Search, PackagePlus, MoreHorizontal } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { projectApi } from "@/services/projectApi";
 import { canvasApi } from "@/services/canvasApi";
@@ -23,6 +23,12 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type ViewMode = "grid" | "list";
 
@@ -41,7 +47,7 @@ export default function Project() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<{ type: "project" | "item"; id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "project" | "item" | "delete-item"; id: string; name: string; itemType?: "canvas" | "collection" } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showAddExisting, setShowAddExisting] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -143,9 +149,14 @@ export default function Project() {
     }
   };
 
-  const handleRemoveItem = (e: React.MouseEvent, itemId: string, name: string) => {
+  const handleRemoveItem = (e: React.MouseEvent, itemId: string, name: string, itemType: "canvas" | "collection") => {
     e.stopPropagation();
-    setDeleteTarget({ type: "item", id: itemId, name });
+    setDeleteTarget({ type: "item", id: itemId, name, itemType });
+  };
+
+  const handleDeleteItem = (e: React.MouseEvent, itemId: string, name: string, itemType: "canvas" | "collection") => {
+    e.stopPropagation();
+    setDeleteTarget({ type: "delete-item", id: itemId, name, itemType });
   };
 
   const handleDeleteProject = () => {
@@ -173,7 +184,25 @@ export default function Project() {
       if (deleteTarget.type === "project") {
         await projectApi.delete(project.id);
         navigate("/");
+      } else if (deleteTarget.type === "delete-item") {
+        // Permanently delete the item
+        if (deleteTarget.itemType === "canvas") {
+          await canvasApi.delete(deleteTarget.id);
+        } else {
+          await referenceCollectionApi.delete(deleteTarget.id);
+        }
+        // Also remove from project
+        const updated: ProjectData = {
+          ...project,
+          items: project.items.filter((i) => i.id !== deleteTarget.id),
+          updatedAt: new Date().toISOString(),
+        };
+        await projectApi.save(updated);
+        setProject(updated);
+        setResolvedItems((prev) => prev.filter((i) => i.id !== deleteTarget.id));
+        setDeleteTarget(null);
       } else {
+        // Remove from project only
         const updated: ProjectData = {
           ...project,
           items: project.items.filter((i) => i.id !== deleteTarget.id),
@@ -418,9 +447,9 @@ export default function Project() {
           {/* Items Grid/List */}
           {filteredItems.length > 0 && (
             viewMode === "grid" ? (
-              <ProjectItemGrid items={filteredItems} onRemove={handleRemoveItem} />
+              <ProjectItemGrid items={filteredItems} onRemove={handleRemoveItem} onDelete={handleDeleteItem} />
             ) : (
-              <ProjectItemList items={filteredItems} onRemove={handleRemoveItem} />
+              <ProjectItemList items={filteredItems} onRemove={handleRemoveItem} onDelete={handleDeleteItem} />
             )
           )}
         </div>
@@ -482,9 +511,11 @@ function getItemSubtext(item: ProjectItemResolved): string {
 function ProjectItemGrid({
   items,
   onRemove,
+  onDelete,
 }: {
   items: ProjectItemResolved[];
-  onRemove: (e: React.MouseEvent, id: string, name: string) => void;
+  onRemove: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
+  onDelete: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
 }) {
   const navigate = useNavigate();
   return (
@@ -522,13 +553,9 @@ function ProjectItemGrid({
               )}
               {item.type === "canvas" ? "Canvas" : "Collection"}
             </div>
-            <button
-              onClick={(e) => onRemove(e, item.id, item.name)}
-              className="absolute top-2 right-2 z-10 p-2 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-              title="Remove from project"
-            >
-              <X className="w-4 h-4 text-white" strokeWidth={2} />
-            </button>
+            <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ItemDropdownMenu item={item} onRemove={onRemove} onDelete={onDelete} />
+            </div>
           </div>
           <div className="p-5">
             <h3 className="text-lg font-bold mb-1 group-hover:text-terracotta transition-colors truncate">
@@ -550,9 +577,11 @@ function ProjectItemGrid({
 function ProjectItemList({
   items,
   onRemove,
+  onDelete,
 }: {
   items: ProjectItemResolved[];
-  onRemove: (e: React.MouseEvent, id: string, name: string) => void;
+  onRemove: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
+  onDelete: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
 }) {
   const navigate = useNavigate();
   return (
@@ -593,16 +622,58 @@ function ProjectItemList({
           <p className="text-sm text-text-secondary font-mono flex-shrink-0">
             {formatRelativeTime(item.updatedAt)}
           </p>
-          <button
-            onClick={(e) => onRemove(e, item.id, item.name)}
-            className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-            title="Remove from project"
-          >
-            <X className="w-4 h-4" strokeWidth={2} />
-          </button>
+          <div className="opacity-0 group-hover:opacity-100 transition-all">
+            <ItemDropdownMenu item={item} onRemove={onRemove} onDelete={onDelete} />
+          </div>
         </div>
       ))}
     </div>
+  );
+}
+
+// --- Item Dropdown Menu ---
+
+function ItemDropdownMenu({
+  item,
+  onRemove,
+  onDelete,
+}: {
+  item: ProjectItemResolved;
+  onRemove: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
+  onDelete: (e: React.MouseEvent, id: string, name: string, itemType: "canvas" | "collection") => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          onClick={(e) => e.stopPropagation()}
+          className="p-2 rounded-lg hover:bg-terracotta/20 transition-colors"
+          aria-label="Item options"
+        >
+          <MoreHorizontal className="w-4 h-4 text-white" strokeWidth={2} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="bg-bg-panel/95 backdrop-blur-xl border-terracotta/20 shadow-2xl shadow-black/40 min-w-[180px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DropdownMenuItem
+          onClick={(e) => onRemove(e as unknown as React.MouseEvent, item.id, item.name, item.type)}
+          className="text-white focus:bg-terracotta/10 focus:text-white cursor-pointer"
+        >
+          <X className="w-4 h-4 mr-2" strokeWidth={2} />
+          Remove from project
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={(e) => onDelete(e as unknown as React.MouseEvent, item.id, item.name, item.type)}
+          className="text-red-400 focus:bg-red-500/10 focus:text-red-400 cursor-pointer"
+        >
+          <Trash2 className="w-4 h-4 mr-2" strokeWidth={2} />
+          Delete {item.type === "canvas" ? "canvas" : "collection"}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -614,23 +685,38 @@ function ProjectDeleteDialog({
   onCancel,
   onConfirm,
 }: {
-  target: { type: "project" | "item"; id: string; name: string } | null;
+  target: { type: "project" | "item" | "delete-item"; id: string; name: string; itemType?: "canvas" | "collection" } | null;
   isDeleting: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const isProject = target?.type === "project";
+  const isDeleteItem = target?.type === "delete-item";
+  const itemTypeLabel = target?.itemType === "canvas" ? "canvas" : "collection";
+
+  const title = isProject
+    ? "Delete this project?"
+    : isDeleteItem
+      ? `Delete this ${itemTypeLabel}?`
+      : "Remove from project?";
+
+  const description = isProject
+    ? `"${target?.name}" will be permanently deleted. Items inside this project will not be deleted.`
+    : isDeleteItem
+      ? `"${target?.name}" will be permanently deleted. This cannot be undone.`
+      : `"${target?.name}" will be removed from this project. The ${itemTypeLabel} itself will not be deleted.`;
+
+  const isDestructive = isProject || isDeleteItem;
+  const confirmLabel = isProject || isDeleteItem ? "Delete" : "Remove";
+  const loadingLabel = isProject || isDeleteItem ? "Deleting..." : "Removing...";
+
   return (
     <AlertDialog open={target !== null} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent className="bg-bg-panel border-terracotta/20 text-white">
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {isProject ? "Delete this project?" : "Remove from project?"}
-          </AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription className="text-text-secondary">
-            {isProject
-              ? `"${target?.name}" will be permanently deleted. Items inside this project will not be deleted.`
-              : `"${target?.name}" will be removed from this project. The item itself will not be deleted.`}
+            {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -640,15 +726,15 @@ function ProjectDeleteDialog({
           <Button
             onClick={onConfirm}
             disabled={isDeleting}
-            className={isProject ? "bg-red-600 text-white hover:bg-red-700" : "bg-terracotta text-white hover:bg-terracotta/80"}
+            className={isDestructive ? "bg-red-600 text-white hover:bg-red-700" : "bg-terracotta text-white hover:bg-terracotta/80"}
           >
             {isDeleting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isProject ? "Deleting..." : "Removing..."}
+                {loadingLabel}
               </>
             ) : (
-              isProject ? "Delete" : "Remove"
+              confirmLabel
             )}
           </Button>
         </AlertDialogFooter>
