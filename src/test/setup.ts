@@ -32,18 +32,18 @@ Object.defineProperty(window, 'matchMedia', {
 })
 
 // Mock IntersectionObserver (used by Radix UI)
-global.IntersectionObserver = class IntersectionObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
+globalThis.IntersectionObserver = class IntersectionObserver {
+  constructor() { }
+  disconnect() { }
+  observe() { }
   takeRecords() { return [] }
-  unobserve() {}
+  unobserve() { }
 } as unknown as typeof IntersectionObserver
 
 // Mock ResizeObserver (used by Radix UI)
-global.ResizeObserver = class ResizeObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  unobserve() {}
+globalThis.ResizeObserver = class ResizeObserver {
+  constructor() { }
+  disconnect() { }
+  observe() { }
+  unobserve() { }
 } as unknown as typeof ResizeObserver
